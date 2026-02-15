@@ -11,3 +11,4 @@ vite.config.ts.timestamp-*
 ._*
 target/
 .direnv/
+debug_secrets

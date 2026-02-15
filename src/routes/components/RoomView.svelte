@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { invoke } from "@tauri-apps/api/core";
     import type { Message, RoomInfo, User } from "../utils/types";
     import RoomHeader from "./RoomHeader.svelte";
     import RoomList from "./RoomList.svelte";
@@ -61,6 +62,7 @@
 
 <div class="layout">
     <header>
+        <button on:click={async () => {await invoke("login", {homeserver_url: "https://matrix.org"})}}>login</button>
         <RoomHeader activeRoom={rooms[1]}/>
     </header>
 

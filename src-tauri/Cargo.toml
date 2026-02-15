@@ -28,3 +28,4 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 url = "2.5.8"
 thiserror = "2.0.18"
+tauri-plugin-store = "2"
