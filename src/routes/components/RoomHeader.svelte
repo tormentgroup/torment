@@ -9,9 +9,9 @@
     <RoomTypeIcon />
 
     <div class="breadcrumb">
-        <p>{activeRoom.parent}</p>
+        <p>Torment Nexus</p>
         <p>&gt</p>
-        <p>{activeRoom.name}</p>
+        <p>{activeRoom.display_name}</p>
     </div>
 </div>
 

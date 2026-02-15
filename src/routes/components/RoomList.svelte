@@ -10,7 +10,7 @@
             <RoomTypeIcon />
 
             <p class=name>
-                {item.name}
+                {item.display_name}
             </p>
         </div>
     {/each}

@@ -48,22 +48,45 @@
         },
     ];
 
-    const rooms: RoomInfo[] = [
-        {
-            name: "general",
-            parent: "Purgatory"
-        },
-        {
-            name: "general2",
-            parent: "Purgatory"
+    // TODO: Use real room
+    let activeRoom: RoomInfo = {
+        display_name: "general",
+        id: "",
+        kind: "",
+    };
+
+    let rooms: RoomInfo[] = $state([]);
+
+    const login = async () => {
+        await invoke("login", {homeserver_url: "https://matrix.org"});
+    };
+
+    const logRooms = async () => {
+        rooms = [];
+        for (const r of (await invoke("get_rooms"))) {
+            if (r.cached_display_name) {
+                console.log(r.cached_display_name);
+
+                let name = r.cached_display_name.Named;
+                if (!name) name = r.cached_display_name.Calculated;
+
+                rooms.push({
+                    display_name: name,
+                    id: r.room_id,
+                    kind: "unknown",
+                });
+            } else {
+                console.log(r);
+            }
         }
-    ];
+    };
 </script>
 
 <div class="layout">
     <header>
-        <button on:click={async () => {await invoke("login", {homeserver_url: "https://matrix.org"})}}>login</button>
-        <RoomHeader activeRoom={rooms[1]}/>
+        <button on:click={login}>login</button>
+        <button on:click={logRooms}>Log rooms</button>
+        <RoomHeader {activeRoom}/>
     </header>
 
     <aside>

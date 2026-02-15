@@ -1,6 +1,6 @@
 #![recursion_limit = "256"]
 use matrix_sdk::{
-    Client, ClientBuildError, Room, authentication::matrix::MatrixSession, config::SyncSettings, ruma::events::room::message::SyncRoomMessageEvent, store::RoomLoadSettings
+    Client, ClientBuildError, Room, authentication::matrix::MatrixSession, config::SyncSettings, ruma::{events::room::message::SyncRoomMessageEvent, room::RoomType}, store::RoomLoadSettings
 };
 use serde::Serialize;
 use tauri::{
@@ -99,6 +99,20 @@ async fn login(app: AppHandle, homeserver_url: String) -> Result<String, AuthErr
     Ok(sso_url)
 }
 
+
+#[tauri::command]
+async fn get_rooms(app: AppHandle) -> Vec<matrix_sdk::RoomInfo> {
+    let state: State<'_, AppData> = app.state();
+    let client = state.client.read().await;
+    let client = client.as_ref().unwrap();
+    let mut result = Vec::new();
+    for room in client.rooms() {
+        result.push(room.clone_info());
+    }
+    result
+}
+
+
 #[derive(Error, Debug, Serialize)]
 #[serde(tag = "type")]
 pub enum AuthError {
@@ -174,9 +188,11 @@ async fn finish_login(app_handle: AppHandle) {
     let app_handle = app_handle.clone();
     std::thread::spawn(move || {
         let state: State<'_, AppData> = app_handle.state();
-        let client = state.client.blocking_write();
-        if let Some(client) = &*client {
-            let client = client.clone();
+        let client = {
+            let guard = state.client.blocking_read();
+            guard.clone()
+        };
+        if let Some(client) = client {
             block_on(async move {
                 // TODO: Handle this in its own rust module
                 println!("Starting sync");
@@ -364,7 +380,10 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![login])
+        .invoke_handler(tauri::generate_handler![
+            login,
+            get_rooms,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
