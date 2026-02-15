@@ -35,9 +35,13 @@
             cairo.dev
             pango.dev
             gdk-pixbuf.dev
+            sqlite
             atk.dev
 
             libayatana-appindicator.dev
+
+            xdg-utils          # provides xdg-mime, xdg-open
+            desktop-file-utils # provides update-desktop-database (and desktop-file-validate etc)
 
             # The two important ones for the Wayland/font/scaling issue:
             gsettings-desktop-schemas

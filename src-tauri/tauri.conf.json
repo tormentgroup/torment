@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "torment",
+        "label": "torment",
         "width": 800,
         "height": 600
       }
@@ -31,5 +32,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["torment"]
+      }
+    }
   }
 }

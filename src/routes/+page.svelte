@@ -4,6 +4,15 @@
   import UserList from "./components/UserList.svelte";
   import type { Message, User } from "./utils/types";
     import Spinner from "$lib/components/ui/spinner/spinner.svelte";
+    import { invoke } from "@tauri-apps/api/core";
+
+  $effect(() => {
+    (async () => {
+      console.log(await invoke("login", {
+        homeserver_url: "https://matrix.org"
+      }));
+    })()
+  })
 
   const users: User[] = [
     {
