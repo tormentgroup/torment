@@ -228,7 +228,7 @@ pub fn run() {
                                             unreachable!();
                                         }
 
-                                    }); 
+                                    });
                                 }
                                 Err(e) => {
                                     // FIXME: add proper error handling

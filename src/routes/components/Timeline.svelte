@@ -43,10 +43,12 @@ p {
 }
 
 .wrapper {
-    margin-block: 5rem;
     display: flex;
     flex-direction: column;
     gap: 1rem;
+    overflow-y: auto;
+    justify-content: flex-end;
+    height: 100vh;
 }
 
 .message {
