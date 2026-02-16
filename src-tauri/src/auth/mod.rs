@@ -1,7 +1,10 @@
 pub mod commands;
 
-use matrix_sdk::{authentication::matrix::MatrixSession, config::SyncSettings};
-use tauri::{AppHandle, Emitter, Manager, State, async_runtime::block_on};
+use matrix_sdk::{
+    authentication::matrix::MatrixSession, config::SyncSettings,
+    ruma::events::room::message::SyncRoomMessageEvent, Client, Room,
+};
+use tauri::{async_runtime::block_on, AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 use url::Url;
 
@@ -38,6 +41,44 @@ pub async fn finish_login(app_handle: AppHandle) {
     {
         let mut auth_state = state.state.write().await;
         *auth_state = AuthState::Complete;
+    }
+    {
+        let mut torment_client = state.client.write().await;
+        let client = torment_client.as_ref().unwrap(); // FIXME: propper errors
+        let homeserver_url = client.homeserver();
+
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .map_err(|e| AuthError::Other(format!("Failed to resolve app data dir: {e}")))
+            .unwrap(); // FIXME: propper errors
+        let store_dir = app_data_dir
+            .join("matrix")
+            .join(client.user_id().unwrap().to_string()) // FIXME: propper errors
+            .join(client.device_id().unwrap().to_string()); // FIXME: propper errors
+
+        let new_client = Client::builder()
+            .homeserver_url(homeserver_url)
+            .sqlite_store(store_dir, None)
+            .build()
+            .await
+            .unwrap(); // FIXME: Proper errors
+        new_client
+            .restore_session(client.session().unwrap()) // FIXME: propper errors
+            .await
+            .unwrap(); // FIXME: Propper errors
+
+        new_client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
+            // TODO: put the handler logic in its own rust module
+            println!(
+                "Received a message {:?} ============== Room {:?} - {:?}",
+                ev,
+                room.room_id(),
+                room.room_type()
+            );
+        });
+        *torment_client = Some(new_client);
+        println!("Using data directory: {:?}", app_data_dir);
     }
     // TODO: emit login success event to the frontend
     app_handle.emit("login-success", {}).unwrap(); // FIXME: handle emit errors

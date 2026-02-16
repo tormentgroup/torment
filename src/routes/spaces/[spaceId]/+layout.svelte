@@ -1,15 +1,11 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import { invoke } from "@tauri-apps/api/core";
-    import Spinner from "$lib/components/ui/spinner/spinner.svelte";
-    import { goto } from "$app/navigation";
     import type { RoomInfo, SpaceInfo } from "$lib/utils/types";
     import RoomList from "./RoomList.svelte";
     import RoomHeader from "./RoomHeader.svelte";
     import SpaceList from "./SpaceList.svelte";
 
     let { children } = $props();
-    let pending = $state(true);
 
     let spaces: SpaceInfo[] = [
         {
@@ -57,63 +53,27 @@
 
     let activeRoom = $derived(rooms.find((r) => r.id === page.params.roomId));
 
-    async function ensureAuth() {
-        try {
-            await invoke("login", { homeserver_url: "https://matrix.org" });
-            // FIXME: Need to check state. If we are now logged in, we can continue, otherwise we send user to login screen
-            pending = false;
-        } catch (e: any) {
-            switch (e.type) {
-                case "InvalidState":
-                    if (page.url.pathname == "/auth/login") {
-                        await goto("/");
-                    }
-                    pending = false;
-                    break;
-                default:
-                    // FIXME: handle case where we are currently in progress but not in login page because login may fail
-                    // FIXME: handle case where we failed auto login and must send user to login page
-                    pending = false;
-                    console.log(e);
-                    await goto("/auth/login");
-                    break;
-            }
-        }
-    }
-
-    $effect(() => {
-        // NOTE: Need this to re-run effect every page load
-        page.url.href;
-
-        console.log(page.url.href);
-
-        void ensureAuth();
-    });
 </script>
 
-{#if !pending}
-    <div class="layout">
-        <aside class="spaces">
-            <SpaceList {spaces} />
-        </aside>
+<div class="layout">
+    <aside class="spaces">
+        <SpaceList {spaces} />
+    </aside>
 
-        <header>
-            {#if activeRoom}
-                <RoomHeader {activeRoom} />
-            {/if}
-        </header>
+    <header>
+        {#if activeRoom}
+            <RoomHeader {activeRoom} />
+        {/if}
+    </header>
 
-        <aside class="rooms">
-            <RoomList {rooms} />
-        </aside>
+    <aside class="rooms">
+        <RoomList {rooms} />
+    </aside>
 
-        <main>
-            {@render children()}
-        </main>
-    </div>
-{:else}
-    <Spinner />
-{/if}
+    <main>
+        {@render children()}
+    </main>
+</div>
 
 <style>
     @reference "tailwindcss";

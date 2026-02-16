@@ -2,17 +2,16 @@
 pub mod auth;
 pub mod types;
 
-use matrix_sdk::{
-    Client,
-};
-use tauri::{
-    AppHandle, Emitter, Manager, State, async_runtime::RwLock
-};
+use matrix_sdk::Client;
+use serde_json::json;
+use tauri::{async_runtime::RwLock, AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
 use url::Url;
 
-use crate::{auth::process_sso_redirect, types::auth::{AuthState, error::AuthError}};
-
+use crate::{
+    auth::process_sso_redirect,
+    types::auth::{error::AuthError, AuthState},
+};
 
 #[tauri::command]
 async fn get_rooms(app: AppHandle) -> Vec<matrix_sdk::RoomInfo> {
@@ -81,10 +80,13 @@ pub fn run() {
                     let app_handle = app_handle_outer.clone();
                     tauri::async_runtime::spawn(async move {
                         if let Some(url) = url {
+                            println!("HERE");
                             match process_sso_redirect(app_handle.clone(), url).await {
-                                Ok(_) => {}
+                                Ok(_) => {
+                                    println!("HERE 2222");
+                                }
                                 Err(e) => {
-                                    app_handle.emit("login-error", e).unwrap(); // FIXME: handle emit errors
+                                    app_handle.emit("login-error", json!(e)).unwrap(); // FIXME: handle emit errors
                                 }
                             };
                         } else {
@@ -93,7 +95,12 @@ pub fn run() {
                             eprintln!("No token found on redirect");
                             let state: State<'_, AppData> = app_handle.state();
                             let mut auth_state = state.state.write().await;
-                            app_handle.emit("login-error", AuthError::Other("No token found on redirect".to_string())).unwrap(); //FIXME: Need to think about how emit errors are handled
+                            app_handle
+                                .emit(
+                                    "login-error",
+                                    AuthError::Other("No token found on redirect".to_string()),
+                                )
+                                .unwrap(); //FIXME: Need to think about how emit errors are handled
                             *auth_state =
                                 AuthState::Failed("No token found on redirect".to_string());
                         }
@@ -102,10 +109,7 @@ pub fn run() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            auth::commands::login,
-            get_rooms,
-        ])
+        .invoke_handler(tauri::generate_handler![auth::commands::login, get_rooms,])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

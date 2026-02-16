@@ -1,6 +1,6 @@
 use matrix_sdk::{
-    authentication::matrix::MatrixSession, ruma::events::room::message::SyncRoomMessageEvent,
-    store::RoomLoadSettings, Client, Room,
+    authentication::matrix::MatrixSession,
+    store::RoomLoadSettings, Client,
 };
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_store::StoreExt;
@@ -18,6 +18,7 @@ pub async fn login(app: AppHandle, homeserver_url: String) -> Result<String, Aut
     // NOTE: Must check state before continuing
     {
         let auth_state = state.state.read().await;
+        println!("{auth_state:?}");
         match &*auth_state {
             AuthState::InProgress => {
                 eprintln!("Login attempted while authentication is in progress.");
@@ -31,24 +32,10 @@ pub async fn login(app: AppHandle, homeserver_url: String) -> Result<String, Aut
         }
     }
 
-    let app_data_dir = app.path().app_data_dir()
-        .map_err(|e| AuthError::Other(format!("Failed to resolve app data dir: {e}")))?;
-    println!("Using data directory: {:?}", app_data_dir);
-
     let client = Client::builder()
         .homeserver_url(homeserver_url)
-        .sqlite_store(&app_data_dir, None)
         .build()
         .await?;
-    client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
-        // TODO: put the handler logic in its own rust module
-        println!(
-            "Received a message {:?} ============== Room {:?} - {:?}",
-            ev,
-            room.room_id(),
-            room.room_type()
-        );
-    });
 
     // TODO: REMOVE THIS
     let store = app.store(DBG_AUTHPATH).unwrap();
@@ -86,7 +73,6 @@ pub async fn login(app: AppHandle, homeserver_url: String) -> Result<String, Aut
         .matrix_auth()
         .get_sso_login_url("torment://auth", None)
         .await?;
-
 
     // NOTE: Must write state before launching anything
     {

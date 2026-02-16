@@ -4,7 +4,6 @@ use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Error, Debug, Serialize, Clone)]
-#[serde(tag = "type")]
 pub enum AuthError {
     #[error("SSO callback received but no Matrix client is stored")]
     MissingClient,
