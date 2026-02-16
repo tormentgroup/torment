@@ -11,6 +11,7 @@ export type User = {
 
 export type SpaceInfo = {
     name: string;
+    id: string;
     img: string;
 };
 

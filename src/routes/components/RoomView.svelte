@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type { Message, User } from "../utils/types";
+    import type { Message, User } from "../../lib/utils/types";
     import Timeline from "./Timeline.svelte";
     import UserList from "./UserList.svelte";
 
@@ -54,6 +54,18 @@
                 message: "Gaming",
                 timestamp: Date.now() - 1000,
             }];
+        } else if (roomId == "3") {
+            return [{
+                userIndex: 1,
+                message: "Gaming happens here",
+                timestamp: Date.now() - 1000,
+            }]
+        } else if (roomId == "4") {
+            return [{
+                userIndex: 3,
+                message: "Official moontie user meetup",
+                timestamp: Date.now() - 1000,
+            }]
         }
         return [];
     });

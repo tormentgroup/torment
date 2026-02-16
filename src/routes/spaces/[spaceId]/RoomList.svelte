@@ -1,12 +1,13 @@
 <script lang="ts">
-    import RoomTypeIcon from "./RoomTypeIcon.svelte";
+    import RoomTypeIcon from "$lib/components/RoomTypeIcon.svelte";
+    import { page } from "$app/state";
 
     let {rooms} = $props();
 </script>
 
 <div class="roomlist">
     {#each rooms as item}
-        <a class="room-elem" href="/room/{item.id}">
+        <a class="room-elem" href="/spaces/{page.params.spaceId}/room/{item.id}">
             <RoomTypeIcon />
 
             <p class=name>

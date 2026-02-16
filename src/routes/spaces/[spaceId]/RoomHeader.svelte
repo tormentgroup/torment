@@ -1,6 +1,6 @@
 <script lang="ts">
-    import type { RoomInfo } from "../utils/types";
-    import RoomTypeIcon from "./RoomTypeIcon.svelte";
+    import type { RoomInfo } from "../../../lib/utils/types";
+    import RoomTypeIcon from "$lib/components/RoomTypeIcon.svelte";
 
     let {activeRoom}: {activeRoom: RoomInfo} = $props();
 </script>

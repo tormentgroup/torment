@@ -1,6 +1,6 @@
 <script lang="ts">
-    import type { Message, User } from "../utils/types";
-    import { formatDate } from "../utils/utils";
+    import type { Message, User } from "../../lib/utils/types";
+    import { formatDate } from "../../lib/utils/utils";
     let {messages, users}: {messages: Message[], users: User[]}= $props();
 </script>
 

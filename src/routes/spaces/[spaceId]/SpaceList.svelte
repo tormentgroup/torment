@@ -6,7 +6,9 @@
     {#each spaces as item}
         <div class="space-elem">
             <div class="hover-bar"></div>
-            <img src={item.img} width={50} height={50} alt={item.name}/>
+            <a href="/spaces/{item.id}">
+                <img src={item.img} width={50} height={50} alt={item.name}/>
+            </a>
         </div>
     {/each}
 </div>
