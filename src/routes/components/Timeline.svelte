@@ -48,7 +48,7 @@ p {
     gap: 1rem;
     overflow-y: auto;
     justify-content: flex-end;
-    height: 100vh;
+    height: 100%;
 }
 
 .message {

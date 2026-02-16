@@ -9,6 +9,11 @@ export type User = {
     img: string
 }
 
+export type SpaceInfo = {
+    name: string;
+    img: string;
+};
+
 // TODO: Remove/Replace with the big definition
 export type RoomInfo = {
     display_name: string;

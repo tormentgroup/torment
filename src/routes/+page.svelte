@@ -1,7 +1,7 @@
 <script lang="ts">
-  import RoomView from "./components/RoomView.svelte";
+    import SpaceView from "./components/SpaceView.svelte";
 </script>
 
 <main>
-  <RoomView />
+  <SpaceView />
 </main>

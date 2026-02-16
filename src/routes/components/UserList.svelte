@@ -27,6 +27,7 @@
 .profile {
   display: flex;
   align-items: center;
+  padding-inline: 0.5rem;
   gap: 1rem;
 }
 .profile:nth-of-type(1) {
