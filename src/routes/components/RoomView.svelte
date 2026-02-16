@@ -76,6 +76,7 @@
         listen("login-success", (event) => {
             console.log("login-success: ", event);
             pending = false
+            logRooms();
         })
         listen("login-error", (event) => {
             console.log("login-error: ", event);
@@ -103,17 +104,12 @@
             }
         }
     };
+
+    login();
 </script>
 
 <div class="layout">
     <header>
-        <Button onclick={login} disabled={pending}>
-            Login
-            {#if pending}
-                <Spinner/>
-            {/if}
-        </Button>
-        <button onclick={login}>login</button>
         <button onclick={logRooms}>Log rooms</button>
         <RoomHeader {activeRoom}/>
     </header>
