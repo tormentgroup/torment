@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { RoomInfo, SpaceInfo } from "./utils/types";
+    import { page } from '$app/state';
     import RoomHeader from "./components/RoomHeader.svelte";
     import RoomList from "./components/RoomList.svelte";
     import SpaceList from "./components/SpaceList.svelte";
@@ -25,7 +26,7 @@
         kind: "",
     }];
 
-    let activeRoom = rooms[0];
+    let activeRoom = $derived(rooms.find(r => r.id === page.params.roomId));
 </script>
 
 <div class="layout">
@@ -34,7 +35,9 @@
     </aside>
 
     <header>
-        <RoomHeader {activeRoom}/>
+        {#if activeRoom}
+            <RoomHeader {activeRoom}/>
+        {/if}
     </header>
 
     <aside class="rooms">
