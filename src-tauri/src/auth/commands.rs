@@ -30,8 +30,14 @@ pub async fn login(app: AppHandle, homeserver_url: String) -> Result<String, Aut
             AuthState::Failed(_) | AuthState::NotStarted | AuthState::Initialized => {}
         }
     }
+
+    let app_data_dir = app.path().app_data_dir()
+        .map_err(|e| AuthError::Other(format!("Failed to resolve app data dir: {e}")))?;
+    println!("Using data directory: {:?}", app_data_dir);
+
     let client = Client::builder()
         .homeserver_url(homeserver_url)
+        .sqlite_store(&app_data_dir, None)
         .build()
         .await?;
     client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
