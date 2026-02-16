@@ -76,7 +76,7 @@
         listen("login-success", (event) => {
             console.log("login-success: ", event);
             pending = false
-            logRooms();
+            loadRooms();
         })
         listen("login-error", (event) => {
             console.log("login-error: ", event);
@@ -84,7 +84,7 @@
         })
     })
 
-    const logRooms = async () => {
+    const loadRooms = async () => {
         rooms = [];
         let rooms_raw:any = await invoke("get_rooms");
         for (const r of rooms_raw) {
@@ -110,7 +110,6 @@
 
 <div class="layout">
     <header>
-        <button onclick={logRooms}>Log rooms</button>
         <RoomHeader {activeRoom}/>
     </header>
 
