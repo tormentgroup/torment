@@ -5,6 +5,9 @@
     import RoomList from "./RoomList.svelte";
     import Timeline from "./Timeline.svelte";
     import UserList from "./UserList.svelte";
+    import Button from "$lib/components/ui/button/button.svelte";
+    import Spinner from "$lib/components/ui/spinner/spinner.svelte";
+    import { listen } from "@tauri-apps/api/event";
 
     const users: User[] = [
         {
@@ -48,6 +51,8 @@
         },
     ];
 
+    let pending = $state(false);
+
     // TODO: Use real room
     let activeRoom: RoomInfo = {
         display_name: "general",
@@ -58,12 +63,30 @@
     let rooms: RoomInfo[] = $state([]);
 
     const login = async () => {
-        await invoke("login", {homeserver_url: "https://matrix.org"});
+        pending = true;
+        try {
+            await invoke("login", {homeserver_url: "https://matrix.org"});
+        } catch (e:any) {
+            console.log("Error: ", e);
+            pending = false;
+        }
     };
+
+    $effect(() => {
+        listen("login-success", (event) => {
+            console.log("login-success: ", event);
+            pending = false
+        })
+        listen("login-error", (event) => {
+            console.log("login-error: ", event);
+            pending = false
+        })
+    })
 
     const logRooms = async () => {
         rooms = [];
-        for (const r of (await invoke("get_rooms"))) {
+        let rooms_raw:any = await invoke("get_rooms");
+        for (const r of rooms_raw) {
             if (r.cached_display_name) {
                 console.log(r.cached_display_name);
 
@@ -84,8 +107,14 @@
 
 <div class="layout">
     <header>
-        <button on:click={login}>login</button>
-        <button on:click={logRooms}>Log rooms</button>
+        <Button onclick={login} disabled={pending}>
+            Login
+            {#if pending}
+                <Spinner/>
+            {/if}
+        </Button>
+        <button onclick={login}>login</button>
+        <button onclick={logRooms}>Log rooms</button>
         <RoomHeader {activeRoom}/>
     </header>
 
@@ -103,7 +132,7 @@
     </aside>
 </div>
 
-<style>
+<style lang="postcss">
     @reference "tailwindcss";
 
     header {

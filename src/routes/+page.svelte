@@ -5,7 +5,3 @@
 <main>
   <RoomView />
 </main>
-
-<style lang="postcss">
-  @reference "tailwindcss";
-</style>
