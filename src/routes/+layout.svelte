@@ -1,4 +1,5 @@
 <script lang="ts">
+/* <<<<<<< Updated upstream
     import type { RoomInfo, SpaceInfo } from "./utils/types";
     import { page } from '$app/state';
     import RoomHeader from "./components/RoomHeader.svelte";
@@ -27,8 +28,79 @@
     }];
 
     let activeRoom = $derived(rooms.find(r => r.id === page.params.roomId));
+
+
+=======
+*/
+  import "../app.css";
+  import { page } from '$app/state';
+  import { invoke } from '@tauri-apps/api/core';
+  import Spinner from "$lib/components/ui/spinner/spinner.svelte";
+  import { goto } from "$app/navigation";
+    import type { RoomInfo, SpaceInfo } from "./utils/types";
+    import RoomList from "./components/RoomList.svelte";
+    import RoomHeader from "./components/RoomHeader.svelte";
+    import SpaceList from "./components/SpaceList.svelte";
+
+  let { children } = $props();
+  let pending = $state(true);
+
+  let spaces: SpaceInfo[] = [{
+      name: "Purgatory",
+      img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
+  }, {
+      name: "Torment Nexus",
+      img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
+  }];
+  
+  let rooms: RoomInfo[] = [{
+      display_name: "general",
+      id: "1",
+      kind: "",
+  }, {
+      display_name: "general2",
+      id: "2",
+      kind: "",
+  }];
+  
+  let activeRoom = $derived(rooms.find(r => r.id === page.params.roomId));
+
+  async function ensureAuth() {
+    try {
+      await invoke('login', { homeserver_url: 'https://matrix.org' });
+      // FIXME: Need to check state. If we are now logged in, we can continue, otherwise we send user to login screen
+      pending = false;
+    } catch (e: any) { 
+      switch (e.type) {
+        case "InvalidState":
+          if (page.url.pathname == "/auth/login") {
+            await goto("/");
+          }  
+          pending = false;
+          break;
+        default:
+          // FIXME: handle case where we are currently in progress but not in login page because login may fail
+          // FIXME: handle case where we failed auto login and must send user to login page
+          pending = false;
+          console.log(e);
+          await goto("/auth/login");
+          break;
+
+      }
+    }
+  }
+
+  $effect(() => {
+    // NOTE: Need this to re-run effect every page load
+    page.url.href;
+
+    console.log(page.url.href);
+
+    void ensureAuth();
+  });
 </script>
 
+{#if !pending}
 <div class="layout">
     <aside class="spaces">
         <SpaceList {spaces}/>
@@ -47,8 +119,10 @@
     <main>
         {@render children()}
     </main>
-</div>
-
+  </div>
+{:else}
+  <Spinner/>
+{/if}
 <style>
     @reference "tailwindcss";
 
