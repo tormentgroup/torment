@@ -3,6 +3,8 @@
     import Timeline from "./Timeline.svelte";
     import UserList from "./UserList.svelte";
 
+    let {roomId}: {roomId: string} = $props();
+
     const users: User[] = [
         {
             name: "SirOlaf",
@@ -22,28 +24,39 @@
         },
     ];
 
-    const messages: Message[] = [
-        {
-            userIndex: 0,
-            message: "Yo",
-            timestamp: Date.now() - 160000,
-        },
-        {
-            userIndex: 1,
-            message: "Hi",
-            timestamp: Date.now() - 1000,
-        },
-        {
-            userIndex: 2,
-            message: "Hi",
-            timestamp: Date.now() - 0,
-        },
-        {
-            userIndex: 3,
-            message: "ITRSNtinrsoiatniaotraitarntnaritnarint irasntiars",
-            timestamp: Date.now() - 0,
-        },
-    ];
+    let messages: Message[] = $derived.by(() => {
+        if (roomId == "1") {
+            return [
+                {
+                    userIndex: 0,
+                    message: "Yo",
+                    timestamp: Date.now() - 160000,
+                },
+                {
+                    userIndex: 1,
+                    message: "Hi",
+                    timestamp: Date.now() - 1000,
+                },
+                {
+                    userIndex: 2,
+                    message: "Hi",
+                    timestamp: Date.now() - 0,
+                },
+                {
+                    userIndex: 3,
+                    message: "ITRSNtinrsoiatniaotraitarntnaritnarint irasntiars",
+                    timestamp: Date.now() - 0,
+                },
+            ];
+        } else if (roomId == "2") {
+            return [{
+                userIndex: 0,
+                message: "Gaming",
+                timestamp: Date.now() - 1000,
+            }];
+        }
+        return [];
+    });
 </script>
 
 <div class="layout">
