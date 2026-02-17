@@ -1,63 +1,33 @@
 <script lang="ts">
     import { page } from "$app/state";
-    import type { RoomInfo, SpaceInfo } from "$lib/utils/types";
+    import type { RoomInfoMinimal } from "$lib/utils/types";
     import RoomList from "./RoomList.svelte";
     import RoomHeader from "./RoomHeader.svelte";
     import SpaceList from "./SpaceList.svelte";
+    import { invoke } from "@tauri-apps/api/core";
 
     let { children } = $props();
 
-    let spaces: SpaceInfo[] = [
-        {
-            name: "Purgatory",
-            id: "1",
-            img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
-        },
-        {
-            name: "Torment Nexus",
-            id: "2",
-            img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
-        },
-    ];
-
-    let rooms: RoomInfo[] = $derived.by(() => {
-        if (page.params.spaceId == "1") {
-            return [
-                {
-                    display_name: "general",
-                    id: "1",
-                    kind: "",
-                },
-                {
-                    display_name: "general2",
-                    id: "2",
-                    kind: "",
-                },
-            ];
-        } else if (page.params.spaceId == "2") {
-            return [
-                {
-                    display_name: "gamers",
-                    id: "3",
-                    kind: "",
-                },
-                {
-                    display_name: "nerds",
-                    id: "4",
-                    kind: "",
-                },
-            ]
-        }
-        return [];
+    let allRooms: RoomInfoMinimal[] = $state([]);
+    invoke("get_rooms").then((l: RoomInfoMinimal[]) => {
+        console.log(l);
+        allRooms = l;
     });
 
-    let activeRoom = $derived(rooms.find((r) => r.id === page.params.roomId));
+    let topLevelSpaces: RoomInfoMinimal[] = $derived(
+        allRooms.filter(r => r.is_space && r.parent_ids.length === 0)
+    )
 
+    let rooms: RoomInfoMinimal[] = $derived(
+        allRooms.filter(r => r.parent_ids.includes(page.params.spaceId ? page.params.spaceId : ""))
+    );
+
+    let activeRoom = $derived(rooms.find((r) => r.room_id === page.params.roomId));
 </script>
 
 <div class="layout">
     <aside class="spaces">
-        <SpaceList {spaces} />
+        <SpaceList spaces={topLevelSpaces} />
     </aside>
 
     <header>
@@ -104,6 +74,7 @@
     aside.rooms {
         grid-area: rooms;
         background-color: white;
+        overflow: auto;
     }
 
     main {

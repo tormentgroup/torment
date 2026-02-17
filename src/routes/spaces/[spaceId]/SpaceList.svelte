@@ -1,13 +1,15 @@
 <script lang="ts">
-    let {spaces} = $props();
+    import type { RoomInfoMinimal } from "$lib/utils/types";
+
+    let {spaces}: {spaces: RoomInfoMinimal[]} = $props();
 </script>
 
 <div class="layout">
     {#each spaces as item}
         <div class="space-elem">
             <div class="hover-bar"></div>
-            <a href="/spaces/{item.id}">
-                <img src={item.img} width={50} height={50} alt={item.name}/>
+            <a href="/spaces/{item.room_id}">
+                <img src={item.avatar_url} width={50} height={50} alt={item.display_name}/>
             </a>
         </div>
     {/each}

@@ -2,7 +2,8 @@
 pub mod auth;
 pub mod types;
 
-use matrix_sdk::Client;
+use matrix_sdk::{Client, RoomState, room::ParentSpace, stream::StreamExt};
+use serde::Serialize;
 use serde_json::json;
 use tauri::{async_runtime::RwLock, AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -13,14 +14,68 @@ use crate::{
     types::auth::{error::AuthError, AuthState},
 };
 
+
+#[derive(Serialize)]
+pub struct RoomInfoMinimal {
+    room_id: String,
+    parent_ids: Vec<String>,
+    status: RoomState,
+    display_name: String,
+    is_space: bool,
+    avatar_url: String,
+    // TODO: Add more fields, we want knowledge about encryption amongst other things
+}
+
 #[tauri::command]
-async fn get_rooms(app: AppHandle) -> Vec<matrix_sdk::RoomInfo> {
+async fn get_rooms(app: AppHandle) -> Vec<RoomInfoMinimal> {
     let state: State<'_, AppData> = app.state();
     let client = state.client.read().await;
     let client = client.as_ref().unwrap();
     let mut result = Vec::new();
     for room in client.rooms() {
-        result.push(room.clone_info());
+        let mut parent_ids = Vec::new();
+        if let Ok(parents) = room.parent_spaces().await {
+            let parents: Vec<_> = parents.collect().await;
+            for parent in parents {
+                match parent {
+                    Ok(ParentSpace::Reciprocal(r) | ParentSpace::WithPowerlevel(r)) => {
+                        parent_ids.push(r.room_id().to_string());
+                    }
+                    Ok(ParentSpace::Unverifiable(id)) => {
+                        parent_ids.push(id.to_string());
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        let display_name = room
+            .display_name()
+            .await
+            .map(|n| n.to_string())
+            .unwrap_or_default();
+
+        let avatar_url = room.avatar_url().and_then(|mxc| {
+            let server_name = mxc.server_name().ok()?;
+            let media_id = mxc.media_id().ok()?;
+            let homeserver = client.homeserver().to_string();
+            let homeserver = homeserver.trim_end_matches('/');
+            Some(format!(
+                "{}/_matrix/media/v3/download/{}/{}",
+                homeserver,
+                server_name,
+                media_id,
+            ))
+        }).unwrap_or_default();
+
+        result.push(RoomInfoMinimal {
+            room_id: room.room_id().to_string(),
+            parent_ids,
+            status: room.state(),
+            display_name,
+            is_space: room.is_space(),
+            avatar_url
+        });
     }
     result
 }

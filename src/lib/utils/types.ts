@@ -9,15 +9,13 @@ export type User = {
     img: string
 }
 
-export type SpaceInfo = {
-    name: string;
-    id: string;
-    img: string;
-};
+export type RoomStatus = "Joined" | "Left" | "Infited" | "Knocked" | "Banned";
 
-// TODO: Remove/Replace with the big definition
-export type RoomInfo = {
+export type RoomInfoMinimal = {
+    room_id: string;
+    parent_ids: string[];
+    status: RoomStatus;
     display_name: string;
-    id: string;
-    kind: string;
+    is_space: boolean;
+    avatar_url: string;
 };
