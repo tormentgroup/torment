@@ -2,7 +2,7 @@ pub mod commands;
 
 use matrix_sdk::{
     authentication::matrix::MatrixSession, config::SyncSettings,
-    ruma::events::room::message::SyncRoomMessageEvent, Client, Room,
+    ruma::events::room::message::SyncRoomMessageEvent, Client, Room, SessionChange,
 };
 use tauri::{async_runtime::block_on, AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
@@ -59,7 +59,8 @@ pub async fn finish_login(app_handle: AppHandle) {
 
         let new_client = Client::builder()
             .homeserver_url(homeserver_url)
-            .sqlite_store(store_dir, None)
+            .sqlite_store(&store_dir, None)
+            .handle_refresh_tokens()
             .build()
             .await
             .unwrap(); // FIXME: Proper errors
@@ -77,6 +78,37 @@ pub async fn finish_login(app_handle: AppHandle) {
                 room.room_type()
             );
         });
+
+        // Persist refreshed session tokens back to auth store so they survive restarts
+        let mut session_rx = new_client.subscribe_to_session_changes();
+        let session_app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                match session_rx.recv().await {
+                    Ok(SessionChange::TokensRefreshed) => {
+                        let state: State<'_, AppData> = session_app_handle.state();
+                        let client_guard = state.client.read().await;
+                        if let Some(client) = client_guard.as_ref() {
+                            if let Some(session) = client.matrix_auth().session() {
+                                let store = session_app_handle.store(DBG_AUTHPATH).unwrap();
+                                store.set("auth", serde_json::json!(session));
+                                store.save().ok();
+                                eprintln!("Session tokens refreshed and persisted");
+                            }
+                        }
+                    }
+                    Ok(SessionChange::UnknownToken { soft_logout }) => {
+                        eprintln!(
+                            "Session token invalidated (soft_logout={soft_logout}), \
+                             user needs to re-authenticate"
+                        );
+                        // TODO: emit an event to the frontend to trigger re-login
+                    }
+                    Err(_) => break, // channel closed, client dropped
+                }
+            }
+        });
+
         *torment_client = Some(new_client);
         println!("Using data directory: {:?}", app_data_dir);
     }
@@ -85,8 +117,8 @@ pub async fn finish_login(app_handle: AppHandle) {
 
     let app_handle = app_handle.clone();
     std::thread::spawn(move || {
-        let state: State<'_, AppData> = app_handle.state();
         let client = {
+            let state: State<'_, AppData> = app_handle.state();
             let guard = state.client.blocking_read();
             guard.clone()
         };
@@ -95,8 +127,74 @@ pub async fn finish_login(app_handle: AppHandle) {
                 // TODO: Handle this in its own rust module
                 println!("Starting sync");
 
-                // We sync using sync_once at startup so we can let the client know data is ready
-                client.sync_once(SyncSettings::default()).await.unwrap();
+                // We sync using sync_once at startup so we can let the client know data is ready.
+                // If the stored sync token is stale (e.g. server restart, long inactivity,
+                // or token refresh desync), we clear the sqlite store and rebuild the client.
+                let client = match client.sync_once(SyncSettings::default()).await {
+                    Ok(_) => client,
+                    Err(e) if e.to_string().contains("Invalid stream token") => {
+                        eprintln!("Stale sync token detected, rebuilding with fresh store...");
+
+                        let homeserver_url = client.homeserver();
+                        let session = client.session().expect("client must have a session");
+                        let user_id =
+                            client.user_id().expect("client must have a user_id").to_string();
+                        let device_id = client
+                            .device_id()
+                            .expect("client must have a device_id")
+                            .to_string();
+
+                        let app_data_dir = app_handle
+                            .path()
+                            .app_data_dir()
+                            .expect("failed to resolve app data dir");
+                        let store_dir =
+                            app_data_dir.join("matrix").join(&user_id).join(&device_id);
+
+                        // Drop old client to release sqlite file handles before deleting
+                        drop(client);
+                        let _ = std::fs::remove_dir_all(&store_dir);
+
+                        let new_client = Client::builder()
+                            .homeserver_url(homeserver_url)
+                            .sqlite_store(&store_dir, None)
+                            .handle_refresh_tokens()
+                            .build()
+                            .await
+                            .expect("failed to rebuild client");
+
+                        new_client
+                            .restore_session(session)
+                            .await
+                            .expect("failed to restore session on rebuilt client");
+
+                        new_client.add_event_handler(
+                            |ev: SyncRoomMessageEvent, room: Room| async move {
+                                println!(
+                                    "Received a message {:?} ============== Room {:?} - {:?}",
+                                    ev,
+                                    room.room_id(),
+                                    room.room_type()
+                                );
+                            },
+                        );
+
+                        // Update shared state so the rest of the app uses the new client
+                        {
+                            let state: State<'_, AppData> = app_handle.state();
+                            *state.client.write().await = Some(new_client.clone());
+                        }
+
+                        new_client
+                            .sync_once(SyncSettings::default())
+                            .await
+                            .expect("sync_once failed after store rebuild");
+
+                        new_client
+                    }
+                    Err(e) => panic!("sync_once failed: {e}"),
+                };
+
                 app_handle.emit("sync-ready", {}).unwrap();
 
                 // Now start the endless sync loop
