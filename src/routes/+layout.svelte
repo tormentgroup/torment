@@ -17,12 +17,11 @@
                 await goto(`/auth/login?${url}`);
             }
             // FIXME: Need to check state. If we are now logged in, we can continue, otherwise we send user to login screen
-            pending = false;
-        } catch (e: any) { 
+        } catch (e: any) {
             if (e.InvalidState == "Complete") {
                 if (page.url.pathname == "/auth/login") {
                     await goto("/");
-                }  
+                }
             } else {
                 // FIXME: handle case where we are currently in progress but not in login page because login may fail
                 // FIXME: handle case where we failed auto login and must send user to login page
@@ -33,24 +32,33 @@
                 console.log(e);
                 await goto("/auth/login");
             }
-            pending = false;
         }
     }
 
 
+    // Listeners only need to be set up once
     $effect(() => {
-        // NOTE: Need this to re-run effect every page load
+        const unlisteners = [
+            listen("login-error", (e: any) => {
+                console.log(e);
+                if (page.url.pathname != "/auth/login") {
+                    goto("/auth/login")
+                }
+            }),
+            listen("sync-ready", () => {
+                console.log("Sync ready")
+                pending = false;
+            }),
+        ];
+
+        return () => {
+            unlisteners.map((x) => x.then((f) => f()));
+        };
+    });
+
+    // Auth check re-runs on every navigation
+    $effect(() => {
         page.url.href;
-
-        listen("login-error", (e: any) => {
-            console.log(e);
-            if (page.url.pathname != "/auth/login") {
-                goto("/auth/login")
-            }
-        })
-
-        console.log(page.url.href);
-
         void ensureAuth();
     });
 </script>

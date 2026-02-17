@@ -94,6 +94,12 @@ pub async fn finish_login(app_handle: AppHandle) {
             block_on(async move {
                 // TODO: Handle this in its own rust module
                 println!("Starting sync");
+
+                // We sync using sync_once at startup so we can let the client know data is ready
+                client.sync_once(SyncSettings::default()).await.unwrap();
+                app_handle.emit("sync-ready", {}).unwrap();
+
+                // Now start the endless sync loop
                 client.sync(SyncSettings::default()).await.unwrap();
                 println!("Sync stopped");
             });
