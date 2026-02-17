@@ -2,7 +2,8 @@
 pub mod auth;
 pub mod types;
 
-use matrix_sdk::{Client, RoomState, room::ParentSpace, stream::StreamExt};
+use matrix_sdk::{Client, RoomState, media::{MediaFormat, MediaRequestParameters}, room::ParentSpace, stream::StreamExt};
+use matrix_sdk::ruma::{OwnedMxcUri, events::room::MediaSource};
 use serde::Serialize;
 use serde_json::json;
 use tauri::{async_runtime::RwLock, AppHandle, Emitter, Manager, State};
@@ -55,18 +56,9 @@ async fn get_rooms(app: AppHandle) -> Vec<RoomInfoMinimal> {
             .map(|n| n.to_string())
             .unwrap_or_default();
 
-        let avatar_url = room.avatar_url().and_then(|mxc| {
-            let server_name = mxc.server_name().ok()?;
-            let media_id = mxc.media_id().ok()?;
-            let homeserver = client.homeserver().to_string();
-            let homeserver = homeserver.trim_end_matches('/');
-            Some(format!(
-                "{}/_matrix/media/v3/download/{}/{}",
-                homeserver,
-                server_name,
-                media_id,
-            ))
-        }).unwrap_or_default();
+        let avatar_url = room.avatar_url()
+            .map(|mxc| mxc.to_string())
+            .unwrap_or_default();
 
         result.push(RoomInfoMinimal {
             room_id: room.room_id().to_string(),
@@ -100,6 +92,56 @@ pub fn run() {
         .manage(AppData {
             client: RwLock::new(None),
             state: RwLock::new(AuthState::NotStarted),
+        })
+        .register_asynchronous_uri_scheme_protocol("mxc", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let uri = request.uri();
+                // Reconstruct mxc:// URI from the request URL
+                // Tauri gives us: mxc://localhost/server_name/media_id
+                // We need: mxc://server_name/media_id
+                let path = uri.path();
+                let host = uri.host().unwrap_or_default();
+                let mxc_uri: OwnedMxcUri = format!("mxc://{}{}", host, path).into();
+
+                let state: State<'_, AppData> = app.state();
+                let client = state.client.read().await;
+                let Some(client) = client.as_ref() else {
+                    responder.respond(
+                        tauri::http::Response::builder()
+                            .status(503)
+                            .body(b"Client not ready".to_vec())
+                            .unwrap(),
+                    );
+                    return;
+                };
+
+                let request = MediaRequestParameters {
+                    source: MediaSource::Plain(mxc_uri),
+                    format: MediaFormat::File,
+                };
+
+                match client.media().get_media_content(&request, true).await {
+                    Ok(data) => {
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(200)
+                                .header("Content-Type", "application/octet-stream")
+                                .body(data)
+                                .unwrap(),
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to fetch media: {e}");
+                        responder.respond(
+                            tauri::http::Response::builder()
+                                .status(404)
+                                .body(format!("Media not found: {e}").into_bytes())
+                                .unwrap(),
+                        );
+                    }
+                }
+            });
         })
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             let window = app.get_webview_window("torment");

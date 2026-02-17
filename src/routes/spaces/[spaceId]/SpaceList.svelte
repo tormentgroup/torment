@@ -37,6 +37,13 @@
         padding-left: 1rem;
     }
 
+    img {
+        object-fit: cover;
+        object-position: center;
+        border-radius: 10px;
+        aspect-ratio: 1/1;
+    }
+
     .space-elem:hover {
         cursor: pointer;
     }
