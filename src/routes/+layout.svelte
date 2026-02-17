@@ -14,7 +14,7 @@
             let url = await invoke('login', { homeserver_url: 'https://matrix.org' });
             // NOTE: if login was success, that only means that the url was launched
             if (page.url.pathname != "/auth/login") {
-                await goto(`/auth/login${url}`);
+                await goto(`/auth/login?${url}`);
             }
             // FIXME: Need to check state. If we are now logged in, we can continue, otherwise we send user to login screen
             pending = false;
