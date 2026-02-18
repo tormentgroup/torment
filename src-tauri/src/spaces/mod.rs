@@ -11,10 +11,7 @@ use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedRoomId};
 /// would form a cycle is skipped; the older edge always wins.
 pub(crate) fn nested_space_ids(
     edges: impl IntoIterator<Item = (OwnedRoomId, OwnedRoomId, Option<MilliSecondsSinceUnixEpoch>)>,
-    all_space_ids: impl IntoIterator<Item = OwnedRoomId>,
 ) -> HashSet<OwnedRoomId> {
-    let all_ids: Vec<OwnedRoomId> = all_space_ids.into_iter().collect();
-
     let mut sorted_edges: Vec<(OwnedRoomId, OwnedRoomId, Option<MilliSecondsSinceUnixEpoch>)> =
         edges.into_iter().collect();
     sorted_edges.sort_by(|a, b| match (&a.2, &b.2) {
@@ -24,24 +21,18 @@ pub(crate) fn nested_space_ids(
         (None, None) => std::cmp::Ordering::Equal,
     });
 
-    let mut graph_children: BTreeMap<OwnedRoomId, BTreeSet<OwnedRoomId>> =
-        all_ids.iter().map(|id| (id.clone(), Default::default())).collect();
-    let mut graph_parents: BTreeMap<OwnedRoomId, BTreeSet<OwnedRoomId>> =
-        all_ids.iter().map(|id| (id.clone(), Default::default())).collect();
+    let mut graph: BTreeMap<OwnedRoomId, BTreeSet<OwnedRoomId>> = BTreeMap::new();
+    let mut nested = HashSet::new();
 
     for (parent, child, _) in sorted_edges {
-        if is_reachable(&graph_children, &child, &parent) {
+        if is_reachable(&graph, &child, &parent) {
             continue;
         }
-        graph_children.entry(parent.clone()).or_default().insert(child.clone());
-        graph_parents.entry(child).or_default().insert(parent);
+        graph.entry(parent).or_default().insert(child.clone());
+        nested.insert(child);
     }
 
-    graph_parents
-        .into_iter()
-        .filter(|(_, parents)| !parents.is_empty())
-        .map(|(id, _)| id)
-        .collect()
+    nested
 }
 
 fn is_reachable(

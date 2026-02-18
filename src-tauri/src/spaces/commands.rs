@@ -134,8 +134,7 @@ pub async fn get_spaces(app: AppHandle) -> Result<Vec<SpaceInfoMinimal>, String>
         }
     }
 
-    let all_space_ids = all_spaces.iter().map(|s| s.room_id().to_owned());
-    let nested = nested_space_ids(edges, all_space_ids);
+    let nested = nested_space_ids(edges);
 
     let mut result = Vec::new();
     for room in &all_spaces {
