@@ -1,19 +1,15 @@
 #![recursion_limit = "256"]
 pub mod auth;
+pub mod spaces;
 pub mod types;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use matrix_sdk::ruma::RoomId;
 use matrix_sdk::ruma::{events::room::MediaSource, OwnedMxcUri};
-use matrix_sdk::stream::StreamExt;
 use matrix_sdk::{
     media::{MediaFormat, MediaRequestParameters},
-    Client, RoomState,
+    Client,
 };
-use matrix_sdk_ui::spaces::room_list::SpaceRoomListPaginationState;
-use matrix_sdk_ui::spaces::{SpaceRoom, SpaceService};
-use serde::Serialize;
 use serde_json::json;
 use tauri::{async_runtime::RwLock, AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -24,99 +20,13 @@ use crate::{
     types::auth::{error::AuthError, AuthState},
 };
 
-#[derive(Serialize)]
-pub struct RoomInfoMinimal {
-    room_id: String,
-    status: RoomState,
-    display_name: String,
-    avatar_url: String,
-    children_count: u64,
-    // TODO: Add more fields, we want knowledge about encryption amongst other things
-}
-
-#[tauri::command(rename_all = "snake_case")]
-// FIXME: Need to handle errors
-async fn get_rooms(app: AppHandle, space_id: String) -> Result<Vec<RoomInfoMinimal>, String> {
-    let state: State<'_, AppData> = app.state();
-    let client = state.client.read().await;
-    let client = client.as_ref().unwrap();
-    let space_service = SpaceService::new(client.clone());
-    let id = RoomId::parse(space_id).map_err(|e|e.to_string())?;
-    let room_list = space_service
-        .space_room_list(id)
-        .await;
-
-    room_list
-        .paginate()
-        .await
-        .map_err(|e| e.to_string())
-        .unwrap();
-    loop {
-        match room_list.pagination_state() {
-            SpaceRoomListPaginationState::Idle { end_reached: true } => break,
-            SpaceRoomListPaginationState::Idle { end_reached: false } => {
-                room_list
-                    .paginate()
-                    .await
-                    .map_err(|e| e.to_string())
-                    .unwrap();
-            }
-            _ => {
-                let mut s = room_list.subscribe_to_pagination_state_updates();
-                let _ = s.next().await;
-            }
-        }
-    }
-
-    let mut result = Vec::new();
-    let rooms = room_list.rooms()
-        .into_iter()
-        .filter(|v| v.state == Some(RoomState::Joined))
-        .collect::<Vec<SpaceRoom>>();
-    for room in rooms {
-        let avatar_url = if let Some(url) = room.avatar_url {
-            url.to_string()
-        } else {
-            "".to_string()
-        };
-        result.push(RoomInfoMinimal {
-            room_id: room.room_id.to_string(),
-            status: room.state.unwrap_or(RoomState::Joined),
-            display_name: room.display_name,
-            children_count: room.children_count,
-            avatar_url,
-        });
-    }
-    Ok(result)
-}
-
-#[derive(Serialize)]
-pub struct SpaceInfoMinimal {
-    room_id: String,
-    display_name: String,
-    avatar_url: String,
-    children_count: u64,
-}
-#[tauri::command]
-async fn get_spaces(app: tauri::AppHandle) -> Result<Vec<SpaceInfoMinimal>, String> {
-    let state: tauri::State<'_, AppData> = app.state();
-    let client_guard = state.client.read().await;
-    let client = client_guard.as_ref().ok_or("Client not ready")?.clone();
-
-    let space_service = SpaceService::new(client);
-    let spaces = space_service.joined_spaces().await;
-
-    let result = spaces
-        .into_iter()
-        .map(|s| SpaceInfoMinimal {
-            room_id: s.room_id.to_string(),
-            display_name: s.display_name,
-            avatar_url: s.avatar_url.map(|mxc| mxc.to_string()).unwrap_or_default(),
-            children_count: s.children_count,
-        })
-        .collect();
-
-    Ok(result)
+pub struct AppData {
+    /// Client needs to be in an Option because it does not get initialized until the user logs in,
+    /// and may specify the homeserver_url which means we can't statically get the client at
+    /// build time
+    client: RwLock<Option<Client>>,
+    state: RwLock<AuthState>,
+    has_synced: AtomicBool,
 }
 
 #[tauri::command]
@@ -129,15 +39,6 @@ fn extract_url(urls: &[Url]) -> Option<Url> {
     urls.iter()
         .find(|url| url.scheme() == "torment" && url.host_str() == Some("auth"))
         .cloned()
-}
-
-pub struct AppData {
-    /// Client needs to be in an Option because it does not get initialized until the user logs in,
-    /// and may specify the homeserver_url which means we can't statically get the client at
-    /// build time
-    client: RwLock<Option<Client>>,
-    state: RwLock<AuthState>,
-    has_synced: AtomicBool,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -261,8 +162,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             auth::commands::login,
-            get_rooms,
-            get_spaces,
+            spaces::commands::get_rooms,
+            spaces::commands::get_spaces,
             has_synced,
         ])
         .run(tauri::generate_context!())
