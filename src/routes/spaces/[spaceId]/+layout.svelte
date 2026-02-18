@@ -1,84 +1,90 @@
 <script lang="ts">
-    import { page } from "$app/state";
-    import type { RoomInfoMinimal } from "$lib/utils/types";
-    import RoomList from "./RoomList.svelte";
-    import RoomHeader from "./RoomHeader.svelte";
-    import SpaceList from "./SpaceList.svelte";
-    import { invoke } from "@tauri-apps/api/core";
+	import { page } from '$app/state';
+	import type { RoomInfoMinimal } from '$lib/utils/types';
+	import RoomList from './RoomList.svelte';
+	import RoomHeader from './RoomHeader.svelte';
+	import { invoke } from '@tauri-apps/api/core';
 
-    let { children } = $props();
+	let { children } = $props();
+	let spaceId = $derived(page.params.spaceId);
+	let roomId = $derived(page.params.roomId);
+	let pending = $state(true);
+    let requestId = 0;
 
-    let allRooms: RoomInfoMinimal[] = $state([]);
-    invoke("get_rooms").then((l: RoomInfoMinimal[]) => {
-        console.log(l);
-        allRooms = l;
-    });
-
-    let topLevelSpaces: RoomInfoMinimal[] = $derived(
-        allRooms.filter(r => r.is_space && r.parent_ids.length === 0)
-    )
-
-    let rooms: RoomInfoMinimal[] = $derived(
-        allRooms.filter(r => r.parent_ids.includes(page.params.spaceId ? page.params.spaceId : ""))
-    );
-
-    let activeRoom = $derived(rooms.find((r) => r.room_id === page.params.roomId));
+	let rooms: RoomInfoMinimal[] = $state([]);
+	const updateRooms = async () => {
+        const id = ++requestId;
+        pending = true;
+        rooms = [];
+		try {
+			let l = (await invoke('get_rooms', { space_id: spaceId })) as RoomInfoMinimal[];
+			console.log(l);
+			for (let room of l) {
+				console.log(room.children_count);
+				if (room.children_count > 0) {
+                    room.children = await invoke("get_rooms", {space_id: room.room_id}) as RoomInfoMinimal[];
+				}
+			}
+            if (id != requestId) {
+                return;
+            }
+			rooms = l;
+		} finally {
+			pending = false;
+		}
+	};
+	$effect(() => {
+		if (spaceId) {
+			updateRooms();
+		}
+	});
+	let activeRoom = $derived(rooms.find((i) => i.room_id == page.params.roomId));
 </script>
 
 <div class="layout">
-    <aside class="spaces">
-        <SpaceList spaces={topLevelSpaces} />
-    </aside>
+	<header>
+		<RoomHeader {activeRoom} />
+	</header>
 
-    <header>
-        {#if activeRoom}
-            <RoomHeader {activeRoom} />
-        {/if}
-    </header>
+	<aside class="rooms">
+		<RoomList {rooms} {pending} {roomId} />
+	</aside>
 
-    <aside class="rooms">
-        <RoomList {rooms} />
-    </aside>
-
-    <main>
-        {@render children()}
-    </main>
+	<main>
+		{@render children()}
+	</main>
 </div>
 
 <style>
-    @reference "tailwindcss";
+	@reference "tailwindcss";
 
-    .layout {
-        display: grid;
-        grid-template-columns: auto auto 1fr;
-        grid-template-rows: auto 1fr;
-        grid-template-areas:
-            "spaces header header"
-            "spaces rooms main";
+	.layout {
+		display: grid;
+		grid-template-columns: auto auto 1fr;
+		grid-template-rows: auto 1fr;
+		grid-template-areas:
+			'spaces header header'
+			'spaces rooms main';
 
-        height: 100vh;
+		height: 100vh;
 
-        background-color: theme(--color-gray-300);
-        gap: 1px;
-    }
+		background-color: var(--color-gray-300);
+		gap: 1px;
+	}
 
-    header {
-        grid-area: header;
-    }
+	header {
+		grid-area: header;
+	}
 
-    aside.spaces {
-        grid-area: spaces;
-        background-color: white;
-    }
+	aside.rooms {
+		grid-area: rooms;
+		background-color: white;
+		overflow: auto;
+		width: 20rem;
+	}
 
-    aside.rooms {
-        grid-area: rooms;
-        background-color: white;
-        overflow: auto;
-    }
-
-    main {
-        grid-area: main;
-        overflow: hidden;
-    }
+	main {
+		grid-area: main;
+		overflow: hidden;
+	}
 </style>

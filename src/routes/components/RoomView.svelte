@@ -82,12 +82,10 @@
     </aside>
 </div>
 
-<style lang="postcss">
-    @reference "tailwindcss";
-
+<style>
     aside {
-        min-width: 12rem;
-        overflow-y: auto;
+        width: 15rem;
+        overflow: auto;
         grid-row: 2 / -1;
         background-color: white;
     }
@@ -102,7 +100,7 @@
         height: 100%;
         overflow: hidden;
 
-        background-color: theme(--color-gray-300);
+        background-color: var(--color-gray-300);
         gap: 1px;
     }
 
@@ -115,7 +113,7 @@
     }
 
     .message-composer {
-        background-color: theme(--color-gray-200);
+        background-color: var(--color-gray-200);
         padding: 0.8rem;
         border-radius: 5px;
     }

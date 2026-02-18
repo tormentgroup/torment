@@ -18,4 +18,13 @@ export type RoomInfoMinimal = {
     display_name: string;
     is_space: boolean;
     avatar_url: string;
+    children?: RoomInfoMinimal[];
+    children_count: number;
 };
+
+export type SpaceInfoMinimal = {
+    room_id: string;
+    display_name: string,
+    avatar_url: string,
+    children_count: number,
+}

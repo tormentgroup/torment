@@ -1,15 +1,15 @@
 <script lang="ts">
-    import type { RoomInfoMinimal } from "$lib/utils/types";
+    import type { SpaceInfoMinimal } from "$lib/utils/types";
 
-    let {spaces}: {spaces: RoomInfoMinimal[]} = $props();
+    let {spaces}: {spaces: SpaceInfoMinimal[]} = $props();
 </script>
 
 <div class="layout">
     {#each spaces as item}
         <div class="space-elem">
             <div class="hover-bar"></div>
-            <a href="/spaces/{item.room_id}">
-                <img src={item.avatar_url} width={50} height={50} alt={item.display_name}/>
+            <a href={`/spaces/${item.room_id}`}>
+                <img src={item.avatar_url} width={40} height={40} alt={item.display_name}/>
             </a>
         </div>
     {/each}
@@ -22,19 +22,18 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        padding-top: 1rem;
+        padding: 1rem 0;
     }
 
     .space-elem {
         position: relative;
-        display: grid;
-        grid-template-columns: auto auto 1fr;
+        display: flex;
         align-items: center;
 
+        padding-inline: 0.5rem;
         gap: 0.5rem;
         font-weight: bold;
         font-size: 1.2rem;
-        padding-left: 1rem;
     }
 
     img {
@@ -50,10 +49,11 @@
 
     .hover-bar {
         position: absolute;
+        left: 0;
         width: 5px;
         height: 60%;
         border-radius: 0 4px 4px 0;
-        background-color: theme(--color-gray-500);
+        background-color: var(--color-gray-500);
         transform: scale(0);
         transition: transform 0.15s ease-in-out;
     }

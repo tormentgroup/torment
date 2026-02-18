@@ -1,5 +1,7 @@
 pub mod commands;
 
+use std::sync::atomic::Ordering;
+
 use matrix_sdk::{
     authentication::matrix::MatrixSession, config::SyncSettings,
     ruma::events::room::message::SyncRoomMessageEvent, Client, Room, SessionChange,
@@ -104,7 +106,7 @@ pub async fn finish_login(app_handle: AppHandle) {
                         );
                         // TODO: emit an event to the frontend to trigger re-login
                     }
-                    Err(_) => break, // channel closed, client dropped
+                    Err(_) => break, // FIXME: handle this properly // channel closed, client dropped
                 }
             }
         });
@@ -112,7 +114,6 @@ pub async fn finish_login(app_handle: AppHandle) {
         *torment_client = Some(new_client);
         println!("Using data directory: {:?}", app_data_dir);
     }
-    // TODO: emit login success event to the frontend
     app_handle.emit("login-success", {}).unwrap(); // FIXME: handle emit errors
 
     let app_handle = app_handle.clone();
@@ -130,6 +131,7 @@ pub async fn finish_login(app_handle: AppHandle) {
                 // We sync using sync_once at startup so we can let the client know data is ready.
                 // If the stored sync token is stale (e.g. server restart, long inactivity,
                 // or token refresh desync), we clear the sqlite store and rebuild the client.
+                let state: State<'_, AppData> = app_handle.state();
                 let client = match client.sync_once(SyncSettings::default()).await {
                     Ok(_) => client,
                     Err(e) if e.to_string().contains("Invalid stream token") => {
@@ -137,8 +139,10 @@ pub async fn finish_login(app_handle: AppHandle) {
 
                         let homeserver_url = client.homeserver();
                         let session = client.session().expect("client must have a session");
-                        let user_id =
-                            client.user_id().expect("client must have a user_id").to_string();
+                        let user_id = client
+                            .user_id()
+                            .expect("client must have a user_id")
+                            .to_string();
                         let device_id = client
                             .device_id()
                             .expect("client must have a device_id")
@@ -148,8 +152,7 @@ pub async fn finish_login(app_handle: AppHandle) {
                             .path()
                             .app_data_dir()
                             .expect("failed to resolve app data dir");
-                        let store_dir =
-                            app_data_dir.join("matrix").join(&user_id).join(&device_id);
+                        let store_dir = app_data_dir.join("matrix").join(&user_id).join(&device_id);
 
                         // Drop old client to release sqlite file handles before deleting
                         drop(client);
@@ -181,7 +184,6 @@ pub async fn finish_login(app_handle: AppHandle) {
 
                         // Update shared state so the rest of the app uses the new client
                         {
-                            let state: State<'_, AppData> = app_handle.state();
                             *state.client.write().await = Some(new_client.clone());
                         }
 
@@ -196,6 +198,7 @@ pub async fn finish_login(app_handle: AppHandle) {
                 };
 
                 app_handle.emit("sync-ready", {}).unwrap();
+                state.has_synced.store(true, Ordering::Relaxed); // TODO: verify if this state will ever need to be set back tto false
 
                 // Now start the endless sync loop
                 client.sync(SyncSettings::default()).await.unwrap();
