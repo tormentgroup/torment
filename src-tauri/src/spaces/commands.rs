@@ -8,8 +8,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppData;
-
-use super::SpaceGraph;
+use super::graph::{SpaceGraph, collect_space_edges};
 
 #[derive(Serialize)]
 pub struct RoomInfoMinimal {
@@ -27,40 +26,6 @@ pub struct SpaceInfoMinimal {
     display_name: String,
     avatar_url: String,
     children_count: u64,
-}
-
-/// Collect all inter-space `m.space.child` edges from joined spaces.
-async fn collect_space_edges(
-    client: &matrix_sdk::Client,
-) -> (Vec<matrix_sdk::Room>, Vec<(OwnedRoomId, OwnedRoomId, Option<matrix_sdk::ruma::MilliSecondsSinceUnixEpoch>)>) {
-    let all_spaces: Vec<_> = client
-        .joined_rooms()
-        .into_iter()
-        .filter(|r| r.room_type().as_ref().map(|t| t.as_str()) == Some("m.space"))
-        .collect();
-
-    let joined_space_ids: std::collections::HashSet<OwnedRoomId> =
-        all_spaces.iter().map(|s| s.room_id().to_owned()).collect();
-
-    let mut edges = Vec::new();
-    for space in &all_spaces {
-        let Ok(child_events) = space.get_state_events_static::<SpaceChildEventContent>().await
-        else {
-            continue;
-        };
-        for raw_event in child_events {
-            let Ok(event) = raw_event.deserialize() else {
-                continue;
-            };
-            let child_id = event.state_key().clone();
-            if !joined_space_ids.contains(&*child_id) {
-                continue;
-            }
-            edges.push((space.room_id().to_owned(), child_id, event.origin_server_ts()));
-        }
-    }
-
-    (all_spaces, edges)
 }
 
 #[tauri::command(rename_all = "snake_case")]
