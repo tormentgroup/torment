@@ -9,25 +9,27 @@
 	let spaceId = $derived(page.params.spaceId);
 	let roomId = $derived(page.params.roomId);
 	let pending = $state(true);
-    let requestId = 0;
+	let requestId = 0;
 
 	let rooms: RoomInfoMinimal[] = $state([]);
 	const updateRooms = async () => {
-        const id = ++requestId;
-        pending = true;
-        rooms = [];
+		const id = ++requestId;
+		pending = true;
+		rooms = [];
 		try {
 			let l = (await invoke('get_rooms', { space_id: spaceId })) as RoomInfoMinimal[];
 			console.log(l);
 			for (let room of l) {
 				console.log(room.children_count);
 				if (room.children_count > 0) {
-                    room.children = await invoke("get_rooms", {space_id: room.room_id}) as RoomInfoMinimal[];
+					room.children = (await invoke('get_rooms', {
+						space_id: room.room_id
+					})) as RoomInfoMinimal[];
 				}
 			}
-            if (id != requestId) {
-                return;
-            }
+			if (id != requestId) {
+				return;
+			}
 			rooms = l;
 		} finally {
 			pending = false;
@@ -38,7 +40,20 @@
 			updateRooms();
 		}
 	});
-	let activeRoom = $derived(rooms.find((i) => i.room_id == page.params.roomId));
+	let activeRoom = $derived.by(() => {
+		for (let child of rooms) {
+			if (child.room_id == roomId) {
+				return child;
+			} else if (child.children) {
+				for (let inner_child of child.children) {
+					if (inner_child.room_id == roomId) {
+						return inner_child;
+					}
+				}
+			}
+		}
+		return undefined;
+	});
 </script>
 
 <div class="layout">

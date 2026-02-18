@@ -3,6 +3,9 @@
 	import RoomTypeIcon from '$lib/components/RoomTypeIcon.svelte';
 
 	let { activeRoom }: { activeRoom?: RoomInfoMinimal } = $props();
+	$effect(() => {
+		console.log(activeRoom, "ANOTNRUYONT YURNTYUO")
+	})
 </script>
 
 <div class="layout">
