@@ -8,8 +8,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
 use crate::AppData;
-
-use super::nested_space_ids;
+use super::graph::{SpaceGraph, collect_space_edges};
 
 #[derive(Serialize)]
 pub struct RoomInfoMinimal {
@@ -40,6 +39,10 @@ pub async fn get_rooms(app: AppHandle, space_id: String) -> Result<Vec<RoomInfoM
         .get_room(&id)
         .ok_or_else(|| format!("Space {id} not found in local state"))?;
 
+    // Build the acyclic space graph so we can filter out cyclic back-references.
+    let (_, edges) = collect_space_edges(client).await;
+    let graph = SpaceGraph::build(edges);
+
     // Read m.space.child state events from local store — no server round-trip.
     // Each state key is the room_id of the child room.
     let child_events = space
@@ -68,6 +71,14 @@ pub async fn get_rooms(app: AppHandle, space_id: String) -> Result<Vec<RoomInfoM
             continue;
         };
 
+        let is_space = child_room.room_type().as_ref().map(|t| t.as_str()) == Some("m.space");
+
+        // If the child is a space, only include it if the DAG considers it a valid
+        // (non-cyclic) child of this parent. Regular rooms can't form cycles.
+        if is_space && !graph.is_valid_child(&id, child_room_id) {
+            continue;
+        }
+
         let display_name = child_room
             .display_name()
             .await
@@ -77,17 +88,15 @@ pub async fn get_rooms(app: AppHandle, space_id: String) -> Result<Vec<RoomInfoM
             .avatar_url()
             .map(|u| u.to_string())
             .unwrap_or_default();
-        // If the child is itself a space, count its children from local state too.
-        let children_count =
-            if child_room.room_type().as_ref().map(|t| t.as_str()) == Some("m.space") {
-                child_room
-                    .get_state_events_static::<SpaceChildEventContent>()
-                    .await
-                    .map(|evs| evs.len() as u64)
-                    .unwrap_or(0)
-            } else {
-                0
-            };
+        let children_count = if is_space {
+            child_room
+                .get_state_events_static::<SpaceChildEventContent>()
+                .await
+                .map(|evs| evs.len() as u64)
+                .unwrap_or(0)
+        } else {
+            0
+        };
 
         result.push(RoomInfoMinimal {
             room_id: child_room.room_id().to_string(),
@@ -106,39 +115,12 @@ pub async fn get_spaces(app: AppHandle) -> Result<Vec<SpaceInfoMinimal>, String>
     let client_guard = state.client.read().await;
     let client = client_guard.as_ref().ok_or("Client not ready")?;
 
-    let all_spaces: Vec<_> = client
-        .joined_rooms()
-        .into_iter()
-        .filter(|r| r.room_type().as_ref().map(|t| t.as_str()) == Some("m.space"))
-        .collect();
-
-    let joined_space_ids: std::collections::HashSet<OwnedRoomId> =
-        all_spaces.iter().map(|s| s.room_id().to_owned()).collect();
-
-    // Collect all inter-space m.space.child edges with their timestamps.
-    let mut edges = Vec::new();
-    for space in &all_spaces {
-        let Ok(child_events) = space.get_state_events_static::<SpaceChildEventContent>().await
-        else {
-            continue;
-        };
-        for raw_event in child_events {
-            let Ok(event) = raw_event.deserialize() else {
-                continue;
-            };
-            let child_id = event.state_key().clone();
-            if !joined_space_ids.contains(&*child_id) {
-                continue;
-            }
-            edges.push((space.room_id().to_owned(), child_id, event.origin_server_ts()));
-        }
-    }
-
-    let nested = nested_space_ids(edges);
+    let (all_spaces, edges) = collect_space_edges(client).await;
+    let graph = SpaceGraph::build(edges);
 
     let mut result = Vec::new();
     for room in &all_spaces {
-        if nested.contains(room.room_id()) {
+        if graph.nested_ids().contains(room.room_id()) {
             continue;
         }
         let display_name = room
