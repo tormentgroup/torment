@@ -27,7 +27,6 @@
 		display: flex;
 		flex-direction: column;
 		margin: 0.8rem 0.5rem;
-		background-color: white;
 		overflow: auto;
 	}
 
@@ -46,8 +45,7 @@
 	}
 
 	.profile-wrapper:hover .profile {
-		background: var(--color-gray-300);
-    cursor: pointer;
+		cursor: pointer;
 	}
 
 	.profile-img {

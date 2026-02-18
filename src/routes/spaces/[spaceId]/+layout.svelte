@@ -83,17 +83,16 @@
 
 		height: 100vh;
 
-		background-color: var(--color-gray-300);
 		gap: 1px;
 	}
 
 	header {
 		grid-area: header;
+		border-bottom: 1px solid var(--border);
 	}
 
 	aside.rooms {
 		grid-area: rooms;
-		background-color: white;
 		overflow: auto;
 		width: 20rem;
 	}

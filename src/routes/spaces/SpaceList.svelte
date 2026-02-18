@@ -21,6 +21,8 @@
     .layout {
         display: flex;
         flex-direction: column;
+        background: var(--sidebar);
+        height: 100%;
         gap: 0.5rem;
         padding: 1rem 0;
     }
@@ -53,7 +55,7 @@
         width: 5px;
         height: 60%;
         border-radius: 0 4px 4px 0;
-        background-color: var(--color-gray-500);
+        background-color: var(--border);
         transform: scale(0);
         transition: transform 0.15s ease-in-out;
     }

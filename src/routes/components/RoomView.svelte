@@ -87,7 +87,9 @@
         width: 15rem;
         overflow: auto;
         grid-row: 2 / -1;
-        background-color: white;
+        background-color: var(--background);
+        color: var(--color-gray-400);
+        border-left: 1px solid var(--border);
     }
 
     aside:last-of-type {
@@ -100,7 +102,7 @@
         height: 100%;
         overflow: hidden;
 
-        background-color: var(--color-gray-300);
+        background-color: var(--background);
         gap: 1px;
     }
 
@@ -108,13 +110,14 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        background-color: white;
         padding: 0.5rem;
     }
 
     .message-composer {
-        background-color: var(--color-gray-200);
-        padding: 0.8rem;
+        padding: 0.9rem;
         border-radius: 5px;
+        background: var(--input);
+        font-weight: 500;
+        font-size: .9rem;
     }
 </style>

@@ -28,7 +28,6 @@
         display: grid;
         grid-template-columns: auto 1fr;
         height: 100vh;
-        background-color: var(--color-gray-300);
     }
 
     header {
@@ -36,13 +35,12 @@
     }
 
     aside.spaces {
-        background-color: white;
         width: fit-content;
+        border-right: 1px solid var(--border);
     }
 
     aside.rooms {
         grid-area: rooms;
-        background-color: white;
         overflow: auto;
     }
 

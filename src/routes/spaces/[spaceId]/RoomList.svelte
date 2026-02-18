@@ -59,11 +59,14 @@
 
 	.roomlist {
 		display: flex;
+		border-right: 1px solid var(--border);
+		height: 100%;
 		flex-direction: column;
 		padding-top: 1rem;
 		padding-inline: 0.2rem;
 		gap: 0.1rem;
 		overflow: hidden;
+		background: var(--sidebar);
 	}
 
 	.inner {
@@ -90,15 +93,15 @@
 	}
 
 	.room-elem:hover {
-		background-color: var(--color-gray-100);
+		background-color: var(--popover);
 		cursor: pointer;
 	}
 
 	.selected {
-		background: var(--color-gray-300);
+		background: var(--muted);
 	}
 
 	.selected:hover {
-		background: var(--color-gray-300);
+		background: var(--muted);
 	}
 </style>

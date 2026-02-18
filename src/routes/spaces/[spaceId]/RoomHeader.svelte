@@ -29,8 +29,8 @@
 		gap: 0.5rem;
 		padding: 0.3rem 0rem 0.3rem 1rem;
 		font-size: 1.1rem;
-		background-color: white;
 		color: var(--color-gray-400);
+		background: var(--sidebar);
 	}
 
 	.breadcrumb {

@@ -5,6 +5,8 @@
 	import { goto } from '$app/navigation';
 	import { listen } from '@tauri-apps/api/event';
 	import { Spinner } from '$lib/components/ui/spinner';
+	// Supports weights 100-900
+	import '@fontsource-variable/roboto';
 	let { children } = $props();
 
 	let authPending = $state(true);
@@ -40,7 +42,7 @@
 	// Listeners only need to be set up once
 	$effect(() => {
 		invoke('has_synced').then((value: any) => {
-            console.log("value: ", value);
+			console.log('value: ', value);
 			syncPending = !value;
 		});
 		const unlisteners = [
@@ -64,7 +66,7 @@
 	// Auth check re-runs on every navigation
 	$effect(() => {
 		page.url.href;
-        console.log(page.url.href);
+		console.log(page.url.href);
 		void ensureAuth();
 	});
 </script>
