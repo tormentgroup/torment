@@ -161,12 +161,12 @@ pub async fn get_members(
     let client = client_guard.as_ref().ok_or("Client not ready")?;
     let room = client.get_room(&RoomId::parse(room_id).unwrap()).unwrap();
     let members = room
-        .members(RoomMemberships::all())
+        .members(RoomMemberships::JOIN)
         .await
         .map_err(|e| e.to_string())?;
     Ok(members
         .iter()
-        .flat_map(|mem| {
+        .map(|mem| {
             let display_name = match mem.display_name() {
                 Some(name) => name.to_string(),
                 _ => mem.name().to_string(),
@@ -175,12 +175,7 @@ pub async fn get_members(
                 Some(url) => url.to_string(),
                 _ => "".to_string(),
             };
-            let membership = mem.membership();
-            if *membership != MembershipState::Join {
-                return None;
-            }
-            println!("{membership:?}");
-            Some(MemberInfoMinimal { display_name, avatar_url })
+            MemberInfoMinimal { display_name, avatar_url }
         })
         .collect())
 }
