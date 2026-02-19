@@ -1,18 +1,34 @@
-<script>
-	let { list } = $props();
+<script lang="ts">
+	import Spinner from '$lib/components/ui/spinner/spinner.svelte';
+	import type { User } from '$lib/utils/types';
+
+	let { users, pending }: { users: User[]; pending?: boolean } = $props();
+	$effect(() => {
+		console.log(users)
+	})
 </script>
 
-<div class="wrapper">
-	<p class="users-count">Users &mdash; {list.length}</p>
-	{#each list as item}
-		<div class="profile-wrapper">
-			<div class="profile">
-				<img src={item.img} width={35} height={35} class="profile-img" />
-				<p class="user-name">{item.name}</p>
+{#if pending}
+	<Spinner />
+{:else}
+	<div class="wrapper">
+		<p class="users-count">Users &mdash; {users.length}</p>
+		{#each users as item}
+			<div class="profile-wrapper">
+				<div class="profile">
+					<img
+						src={item.avatar_url ??
+							'https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80'}
+						width={35}
+						height={35}
+						class="profile-img"
+					/>
+					<p class="user-name">{item.display_name}</p>
+				</div>
 			</div>
-		</div>
-	{/each}
-</div>
+		{/each}
+	</div>
+{/if}
 
 <style>
 	@reference "tailwindcss";
@@ -52,5 +68,6 @@
 		object-fit: cover;
 		object-position: center;
 		border-radius: 100%;
+		aspect-ratio: 1/1;
 	}
 </style>

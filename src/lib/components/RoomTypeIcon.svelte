@@ -4,6 +4,6 @@
 
 <style>
     p {
-        font-style: italic;
+        font-size: 1;
     }
 </style>

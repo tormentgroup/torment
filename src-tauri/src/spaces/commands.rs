@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
 use matrix_sdk::{
+    room::RoomMember,
     ruma::{events::space::child::SpaceChildEventContent, OwnedRoomId, RoomId},
-    RoomState,
+    RoomMemberships, RoomState,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
+use super::graph::{collect_space_edges, SpaceGraph};
 use crate::AppData;
-use super::graph::{SpaceGraph, collect_space_edges};
 
 #[derive(Serialize)]
 pub struct RoomInfoMinimal {
@@ -143,4 +144,40 @@ pub async fn get_spaces(app: AppHandle) -> Result<Vec<SpaceInfoMinimal>, String>
         });
     }
     Ok(result)
+}
+
+#[derive(Serialize)]
+pub struct MemberInfoMinimal {
+    display_name: String,
+    avatar_url: String,
+}
+
+// FIXME: handle errors
+#[tauri::command]
+pub async fn get_members(
+    app: AppHandle,
+    room_id: String,
+) -> Result<Vec<MemberInfoMinimal>, String> {
+    let state: State<'_, AppData> = app.state();
+    let client_guard = state.client.read().await;
+    let client = client_guard.as_ref().ok_or("Client not ready")?;
+    let room = client.get_room(&RoomId::parse(room_id).unwrap()).unwrap();
+    let members = room
+        .members(RoomMemberships::all())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(members
+        .iter()
+        .map(|mem| {
+            let display_name = match mem.display_name() {
+                Some(name) => name.to_string(),
+                _ => mem.name().to_string(),
+            };
+            let avatar_url = match mem.avatar_url() {
+                Some(url) => url.to_string(),
+                _ => "".to_string(),
+            };
+            MemberInfoMinimal { display_name, avatar_url }
+        })
+        .collect())
 }
