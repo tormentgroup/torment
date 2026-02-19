@@ -164,6 +164,7 @@ pub fn run() {
             auth::commands::login,
             spaces::commands::get_rooms,
             spaces::commands::get_spaces,
+            spaces::commands::get_members,
             has_synced,
         ])
         .run(tauri::generate_context!())

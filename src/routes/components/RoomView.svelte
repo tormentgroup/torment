@@ -1,28 +1,23 @@
 <script lang="ts">
+	import { invoke } from "@tauri-apps/api/core";
     import type { Message, User } from "../../lib/utils/types";
     import Timeline from "./Timeline.svelte";
     import UserList from "./UserList.svelte";
 
     let {roomId}: {roomId: string} = $props();
 
-    const users: User[] = [
-        {
-            name: "SirOlaf",
-            img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
-        },
-        {
-            name: "Mr Green",
-            img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
-        },
-        {
-            name: "Click",
-            img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
-        },
-        {
-            name: "Starr",
-            img: "https://img.freepik.com/premium-vector/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-vector-illustration_561158-3407.jpg?semt=ais_user_personalization&w=740&q=80",
-        },
-    ];
+
+	let users: User[] = $state([]);
+	let pending = $state(true);
+
+	$effect(() => {
+		(async () => {
+			pending = true;
+			let members: User[] = await invoke('get_members', { roomId });
+            users = members;
+			pending = false;
+		})();
+	});
 
     let messages: Message[] = $derived.by(() => {
         if (roomId == "1") {
@@ -78,7 +73,7 @@
     </div>
 
     <aside>
-        <UserList list={users}/>
+        <UserList {users} {pending} />
     </aside>
 </div>
 

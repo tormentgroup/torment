@@ -5,8 +5,8 @@ export type Message = {
 };
 
 export type User = {
-    name: string;
-    img: string
+    display_name: string;
+    avatar_url: string
 }
 
 export type RoomStatus = "Joined" | "Left" | "Infited" | "Knocked" | "Banned";

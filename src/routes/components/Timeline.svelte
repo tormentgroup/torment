@@ -5,18 +5,20 @@
 </script>
 
 <div class="wrapper">
+    <!--
     {#each messages as item}
         <div class="message">
-            <img src={users[item.userIndex].img} class="profile" alt="fuck"/>
+            <img src={users[item.userIndex].avatar_url} class="profile" alt="fuck"/>
             <div class="inner-wrapper">
                 <div class="title">
-                    <p class="name">{users[item.userIndex].name}</p>
+                    <p class="name">{users[item.userIndex].display_name}</p>
                     {formatDate(new Date(item.timestamp))}
                 </div>
                 <p>{item.message}</p>
             </div>
         </div>
     {/each}
+    -->
 </div>
 
 <style>
