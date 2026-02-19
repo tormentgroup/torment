@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use matrix_sdk::{
-    room::RoomMember,
-    ruma::{events::space::child::SpaceChildEventContent, OwnedRoomId, RoomId},
-    RoomMemberships, RoomState,
+    RoomMemberships, RoomState, room::RoomMember, ruma::{OwnedRoomId, RoomId, events::{room::member::MembershipState, space::child::SpaceChildEventContent}}
 };
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
@@ -168,7 +166,7 @@ pub async fn get_members(
         .map_err(|e| e.to_string())?;
     Ok(members
         .iter()
-        .map(|mem| {
+        .flat_map(|mem| {
             let display_name = match mem.display_name() {
                 Some(name) => name.to_string(),
                 _ => mem.name().to_string(),
@@ -177,7 +175,12 @@ pub async fn get_members(
                 Some(url) => url.to_string(),
                 _ => "".to_string(),
             };
-            MemberInfoMinimal { display_name, avatar_url }
+            let membership = mem.membership();
+            if *membership != MembershipState::Join {
+                return None;
+            }
+            println!("{membership:?}");
+            Some(MemberInfoMinimal { display_name, avatar_url })
         })
         .collect())
 }
