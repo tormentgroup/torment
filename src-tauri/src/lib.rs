@@ -3,8 +3,11 @@ pub mod auth;
 pub mod spaces;
 pub mod types;
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use matrix_sdk::SlidingSync;
+use matrix_sdk::ruma::{OwnedEventId, OwnedRoomId};
 use matrix_sdk::ruma::{events::room::MediaSource, OwnedMxcUri};
 use matrix_sdk::{
     media::{MediaFormat, MediaRequestParameters},
@@ -18,7 +21,16 @@ use url::Url;
 use crate::{
     auth::process_sso_redirect,
     types::auth::{error::AuthError, AuthState},
+
 };
+
+pub struct TimelineWindow {
+    pub room_id: OwnedRoomId,
+
+    pub events: VecDeque<OwnedEventId>, 
+    pub top_token: Option<String>,
+    pub bottom_token: Option<String>,
+}
 
 pub struct AppData {
     /// Client needs to be in an Option because it does not get initialized until the user logs in,
@@ -27,6 +39,9 @@ pub struct AppData {
     client: RwLock<Option<Client>>,
     state: RwLock<AuthState>,
     has_synced: AtomicBool,
+
+    sliding: RwLock<Option<SlidingSync>>,
+    open_window: RwLock<Option<TimelineWindow>>,
 }
 
 #[tauri::command]
@@ -48,6 +63,8 @@ pub fn run() {
             client: RwLock::new(None),
             state: RwLock::new(AuthState::NotStarted),
             has_synced: AtomicBool::new(false),
+            sliding: RwLock::new(None),
+            open_window: RwLock::new(None),
         })
         .register_asynchronous_uri_scheme_protocol("mxc", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
@@ -165,6 +182,8 @@ pub fn run() {
             spaces::commands::get_rooms,
             spaces::commands::get_spaces,
             spaces::commands::get_members,
+            spaces::commands::open_room,
+            spaces::commands::send_message,
             has_synced,
         ])
         .run(tauri::generate_context!())

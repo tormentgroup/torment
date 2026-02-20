@@ -1,18 +1,19 @@
+use futures_util::StreamExt;
 pub mod commands;
 
 use std::sync::atomic::Ordering;
 
 use matrix_sdk::{
     authentication::matrix::MatrixSession, config::SyncSettings,
-    ruma::events::room::message::SyncRoomMessageEvent, Client, Room, SessionChange,
+    ruma::events::room::message::SyncRoomMessageEvent, sliding_sync::Version, Client, Room,
+    SessionChange,
 };
 use tauri::{async_runtime::block_on, AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
 use url::Url;
 
 use crate::{
-    types::auth::{error::AuthError, AuthState},
-    AppData,
+    AppData, TimelineWindow, types::auth::{AuthState, error::AuthError}
 };
 
 #[cfg(all(debug_assertions))]
@@ -188,11 +189,6 @@ pub async fn finish_login(app_handle: AppHandle) {
                         }
 
                         new_client
-                            .sync_once(SyncSettings::default())
-                            .await
-                            .expect("sync_once failed after store rebuild");
-
-                        new_client
                     }
                     Err(e) => panic!("sync_once failed: {e}"),
                 };
@@ -200,8 +196,29 @@ pub async fn finish_login(app_handle: AppHandle) {
                 app_handle.emit("sync-ready", {}).unwrap();
                 state.has_synced.store(true, Ordering::Relaxed); // TODO: verify if this state will ever need to be set back tto false
 
-                // Now start the endless sync loop
-                client.sync(SyncSettings::default()).await.unwrap();
+                let sliding_sync_builder = client
+                    .sliding_sync("main-sync")
+                    .map_err(|e| e.to_string())
+                    .unwrap()
+                    .with_all_extensions()
+                    .version(Version::Native);
+                let sliding_sync = sliding_sync_builder.build().await.unwrap();
+                {
+                    *state.sliding.write().await = Some(sliding_sync.clone());
+                }
+                let mut stream = Box::pin(sliding_sync.sync());
+                while let Some(update) = stream.next().await {
+                    match update {
+                        Ok(summary) => {
+                            println!("SUMMARY ====> {summary:?}");
+
+                        }
+                        Err(e) => {
+                            println!("{}", e.to_string());
+                        }
+                    }
+                }
+
                 println!("Sync stopped");
             });
         } else {

@@ -1,118 +1,112 @@
 <script lang="ts">
-	import { invoke } from "@tauri-apps/api/core";
-    import type { Message, User } from "../../lib/utils/types";
-    import Timeline from "./Timeline.svelte";
-    import UserList from "./UserList.svelte";
+	import { invoke } from '@tauri-apps/api/core';
+	import type { Message, User } from '../../lib/utils/types';
+	import Timeline from './Timeline.svelte';
+	import UserList from './UserList.svelte';
 
-    let {roomId}: {roomId: string} = $props();
-
+	let { roomId }: { roomId: string } = $props();
 
 	let users: User[] = $state([]);
 	let pending = $state(true);
+	let timelinePending = $state(true);
+	let messages: Message[] = $state([]);
 
 	$effect(() => {
 		(async () => {
+			messages = [];
+			users = [];
 			pending = true;
-			let members: User[] = await invoke('get_members', { roomId });
-            users = members;
-			pending = false;
+			timelinePending = true;
+			let membersAsync = invoke('get_members', { roomId });
+			membersAsync
+				.then((m) => {
+					users = m as any;
+				})
+				.finally(() => {
+					pending = false;
+				});
+
+			let mAsync = invoke('open_room', { room_id: roomId });
+			mAsync
+				.then((m) => {
+					messages = m as Message[];
+					console.log(m);
+				})
+				.finally(() => {
+					timelinePending = false;
+				});
 		})();
 	});
 
-    let messages: Message[] = $derived.by(() => {
-        if (roomId == "1") {
-            return [
-                {
-                    userIndex: 0,
-                    message: "Yo",
-                    timestamp: Date.now() - 160000,
-                },
-                {
-                    userIndex: 1,
-                    message: "Hi",
-                    timestamp: Date.now() - 1000,
-                },
-                {
-                    userIndex: 2,
-                    message: "Hi",
-                    timestamp: Date.now() - 0,
-                },
-                {
-                    userIndex: 3,
-                    message: "ITRSNtinrsoiatniaotraitarntnaritnarint irasntiars",
-                    timestamp: Date.now() - 0,
-                },
-            ];
-        } else if (roomId == "2") {
-            return [{
-                userIndex: 0,
-                message: "Gaming",
-                timestamp: Date.now() - 1000,
-            }];
-        } else if (roomId == "3") {
-            return [{
-                userIndex: 1,
-                message: "Gaming happens here",
-                timestamp: Date.now() - 1000,
-            }]
-        } else if (roomId == "4") {
-            return [{
-                userIndex: 3,
-                message: "Official moontie user meetup",
-                timestamp: Date.now() - 1000,
-            }]
+    const handleSubmit = async (formEvent: SubmitEvent) => {
+        formEvent.preventDefault();
+        if (!formEvent.currentTarget) {
+            return
         }
-        return [];
-    });
+        const form = formEvent?.currentTarget as HTMLFormElement;
+        const data = new FormData(form);
+        const message = data.get("message");
+        if (!message) {
+            return;
+        }
+        await invoke("send_message", {room_id: roomId, message: message})
+        form.reset();
+    }
 </script>
 
 <div class="layout">
-    <div class="chat">
-        <Timeline {users} {messages}/>
-        <input type="text" class="message-composer" placeholder="Send an unencrypted message..." />
-    </div>
+	<div class="chat">
+		<Timeline {users} {messages} pending={timelinePending} />
+        <form onsubmit={handleSubmit} class="message-composer-wrapper">
+            <input name="message" type="text" class="message-composer" placeholder="Send an unencrypted message..." />
+        </form>
+	</div>
 
-    <aside>
-        <UserList {users} {pending} />
-    </aside>
+	<aside>
+		<UserList {users} {pending} />
+	</aside>
 </div>
 
 <style>
-    aside {
-        width: 15rem;
-        overflow: auto;
-        grid-row: 2 / -1;
-        background-color: var(--background);
-        color: var(--color-gray-400);
-        border-left: 1px solid var(--border);
-    }
+	aside {
+		width: 15rem;
+		overflow: auto;
+		grid-row: 2 / -1;
+		background-color: var(--background);
+		color: var(--color-gray-400);
+		border-left: 1px solid var(--border);
+	}
 
-    aside:last-of-type {
-        grid-column: 2;
-    }
+	aside:last-of-type {
+		grid-column: 2;
+	}
 
-    .layout {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        height: 100%;
-        overflow: hidden;
+	.layout {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		height: 100%;
+		overflow: hidden;
 
-        background-color: var(--background);
-        gap: 1px;
-    }
+		background-color: var(--background);
+		gap: 1px;
+	}
 
-    .chat {
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-        padding: 0.5rem;
-    }
+	.chat {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		padding: 0.5rem;
+	}
 
-    .message-composer {
-        padding: 0.9rem;
-        border-radius: 5px;
-        background: var(--input);
-        font-weight: 500;
-        font-size: .9rem;
+	.message-composer-wrapper {
+        width: 100%;
     }
+	.message-composer {
+		padding: 0.9rem;
+        width: 100%;
+		border-radius: 5px;
+		background: var(--input);
+		font-weight: 500;
+		font-size: 0.9rem;
+	}
 </style>

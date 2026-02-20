@@ -1,12 +1,17 @@
 export type Message = {
-    userIndex: number;
-    message: string;
-    timestamp: number;
+    event_id: string;
+    sender: string;
+    ts_ms: number;
+    body: string;
+    formatted_html?: String;
+    edited: boolean;
+    reactions: Map<String, number>;
 };
 
 export type User = {
     display_name: string;
     avatar_url: string
+    id: string;
 }
 
 export type RoomStatus = "Joined" | "Left" | "Infited" | "Knocked" | "Banned";

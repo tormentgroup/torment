@@ -1,10 +1,34 @@
+use futures_util::StreamExt;
+use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use matrix_sdk::ruma::events::AnyMessageLikeEventContent;
+use matrix_sdk_ui::timeline::Timeline;
+use matrix_sdk_ui::timeline::TimelineBuilder;
+use matrix_sdk_ui::timeline::TimelineItem;
+use matrix_sdk_ui::timeline::TimelineItemContent;
+use matrix_sdk_ui::timeline::TimelineItemKind;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use matrix_sdk::deserialized_responses::TimelineEvent;
+
+use matrix_sdk::deserialized_responses::TimelineEventKind;
+use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::events::AnySyncTimelineEvent;
+use matrix_sdk::ruma::UInt;
 use matrix_sdk::{
-    RoomMemberships, RoomState, room::RoomMember, ruma::{OwnedRoomId, RoomId, events::{room::member::MembershipState, space::child::SpaceChildEventContent}}
+    room::{MessagesOptions, RoomMember},
+    ruma::{
+        events::{
+            room::member::MembershipState, space::child::SpaceChildEventContent,
+            AnySyncMessageLikeEvent,
+        },
+        OwnedRoomId, RoomId,
+    },
+    RoomMemberships, RoomState,
 };
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{ipc::IpcResponse, AppHandle, Manager, State};
 
 use super::graph::{collect_space_edges, SpaceGraph};
 use crate::AppData;
@@ -148,6 +172,7 @@ pub async fn get_spaces(app: AppHandle) -> Result<Vec<SpaceInfoMinimal>, String>
 pub struct MemberInfoMinimal {
     display_name: String,
     avatar_url: String,
+    id: String,
 }
 
 // FIXME: handle errors
@@ -175,7 +200,185 @@ pub async fn get_members(
                 Some(url) => url.to_string(),
                 _ => "".to_string(),
             };
-            MemberInfoMinimal { display_name, avatar_url }
+            MemberInfoMinimal {
+                display_name,
+                avatar_url,
+                id: mem.user_id().to_string(),
+            }
         })
         .collect())
+}
+#[derive(Debug, Clone, Serialize)]
+pub struct UiTimelineItem {
+    pub event_id: Option<String>,
+    pub sender: String,
+    pub ts_ms: i64,
+
+    pub body: String,
+    pub formatted_html: Option<String>,
+    pub edited: bool,
+
+    pub reactions: BTreeMap<String, u32>,
+}
+
+pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem> {
+    let event = match it.kind() {
+        TimelineItemKind::Event(ev) => ev,
+        TimelineItemKind::Virtual(_) => return None,
+    };
+
+    let sender = event.sender().to_string();
+    let ts_ms: i64 = event.timestamp().0.into();
+    let event_id = event.event_id().map(|id| id.to_string());
+
+    if event.content().is_unable_to_decrypt() {
+        return Some(UiTimelineItem {
+            event_id,
+            sender,
+            ts_ms,
+            body: "Unable to decrypt message".to_string(),
+            formatted_html: None,
+            edited: false,
+            reactions: BTreeMap::new(),
+        });
+    }
+
+    let msglike = match event.content() {
+        TimelineItemContent::MsgLike(msglike) => msglike,
+        _ => return None,
+    };
+
+    let message = msglike.as_message()?;
+
+    let body = message.body().to_owned();
+    let edited = message.is_edited();
+
+    let formatted_html = match message.msgtype() {
+        MessageType::Text(text) => text.formatted.as_ref().map(|f| f.body.clone()),
+        _ => None,
+    };
+
+    let mut reactions: BTreeMap<String, u32> = BTreeMap::new();
+    if let Some(r) = event.content().reactions() {
+        for (key, by_sender) in r.iter() {
+            reactions.insert(key.to_string(), by_sender.len() as u32);
+        }
+    }
+
+    Some(UiTimelineItem {
+        event_id,
+        sender,
+        ts_ms,
+        body,
+        formatted_html,
+        edited,
+        reactions,
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn open_room(
+    app: tauri::AppHandle,
+    room_id: String,
+) -> Result<Vec<UiTimelineItem>, String> { // FIXME: add actual error types
+    let state: tauri::State<'_, AppData> = app.state();
+
+    let room_id: OwnedRoomId = RoomId::parse(room_id).map_err(|e| e.to_string())?;
+
+    let client = state.client.read().await.clone().ok_or("missing client")?;
+    let room = client.get_room(&room_id).ok_or("not in room")?;
+
+    let timeline = TimelineBuilder::new(&room)
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let target_messages = 20usize;
+
+    let (items_snapshot, mut diffs_stream) = timeline.subscribe().await;
+    let mut items = items_snapshot;
+
+    let chunk: u16 = 100;
+    let hard_cap: u32 = 20_000; // TODO: need to stress test and find actual max
+    let mut total_requested: u32 = 0;
+
+    loop {
+        let renderable = items
+            .iter()
+            .filter(|it| to_ui_item_from_timeline(it).is_some())
+            .count();
+        if renderable >= target_messages || total_requested >= hard_cap {
+            break;
+        }
+
+        let reached_start = timeline
+            .paginate_backwards(chunk)
+            .await
+            .map_err(|e| e.to_string())?;
+        total_requested += chunk as u32;
+
+        while let Some(diffs) = diffs_stream.next().await {
+            let mut any = false;
+            for diff in diffs {
+                diff.apply(&mut items);
+                any = true;
+            }
+
+            if any {
+                let renderable_now = items
+                    .iter()
+                    .filter(|it| to_ui_item_from_timeline(it).is_some())
+                    .count();
+                if renderable_now >= target_messages {
+                    break;
+                }
+
+                break;
+            }
+        }
+
+        if reached_start {
+            break;
+        }
+    }
+
+    let ui: Vec<UiTimelineItem> = items
+        .iter()
+        .rev()
+        .filter_map(to_ui_item_from_timeline)
+        .take(target_messages)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    Ok(ui)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+// FIXME: Add real error handling
+pub async fn send_message(
+    app: tauri::AppHandle,
+    room_id: String,
+    message: String,
+) -> Result<(), String> {
+    let state: tauri::State<'_, AppData> = app.state();
+
+    let room_id: OwnedRoomId = RoomId::parse(room_id).map_err(|e| e.to_string())?;
+
+    let client = state.client.read().await.clone().ok_or("missing client")?;
+    let room = client.get_room(&room_id).ok_or("not in room")?;
+
+    let timeline = TimelineBuilder::new(&room)
+        .build()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    timeline
+        .send(AnyMessageLikeEventContent::RoomMessage(
+            RoomMessageEventContent::text_plain(message),
+        ))
+        .await
+        .unwrap();
+    Ok(())
 }
