@@ -13,7 +13,8 @@ use tauri_plugin_store::StoreExt;
 use url::Url;
 
 use crate::{
-    AppData, TimelineWindow, types::auth::{AuthState, error::AuthError}
+    types::auth::{error::AuthError, AuthState},
+    AppData,
 };
 
 #[cfg(all(debug_assertions))]
@@ -72,15 +73,15 @@ pub async fn finish_login(app_handle: AppHandle) {
             .await
             .unwrap(); // FIXME: Propper errors
 
-        new_client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
-            // TODO: put the handler logic in its own rust module
-            println!(
-                "Received a message {:?} ============== Room {:?} - {:?}",
-                ev,
-                room.room_id(),
-                room.room_type()
-            );
-        });
+        //new_client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
+        //    // TODO: put the handler logic in its own rust module
+        //    println!(
+        //        "Received a message {:?} ============== Room {:?} - {:?}",
+        //        ev,
+        //        room.room_id(),
+        //        room.room_type()
+        //    );
+        //});
 
         // Persist refreshed session tokens back to auth store so they survive restarts
         let mut session_rx = new_client.subscribe_to_session_changes();
@@ -172,16 +173,16 @@ pub async fn finish_login(app_handle: AppHandle) {
                             .await
                             .expect("failed to restore session on rebuilt client");
 
-                        new_client.add_event_handler(
-                            |ev: SyncRoomMessageEvent, room: Room| async move {
-                                println!(
-                                    "Received a message {:?} ============== Room {:?} - {:?}",
-                                    ev,
-                                    room.room_id(),
-                                    room.room_type()
-                                );
-                            },
-                        );
+                        //new_client.add_event_handler(
+                        //    |ev: SyncRoomMessageEvent, room: Room| async move {
+                        //        println!(
+                        //            "Received a message {:?} ============== Room {:?} - {:?}",
+                        //            ev,
+                        //            room.room_id(),
+                        //            room.room_type()
+                        //        );
+                        //    },
+                        //);
 
                         // Update shared state so the rest of the app uses the new client
                         {
@@ -196,28 +197,7 @@ pub async fn finish_login(app_handle: AppHandle) {
                 app_handle.emit("sync-ready", {}).unwrap();
                 state.has_synced.store(true, Ordering::Relaxed); // TODO: verify if this state will ever need to be set back tto false
 
-                let sliding_sync_builder = client
-                    .sliding_sync("main-sync")
-                    .map_err(|e| e.to_string())
-                    .unwrap()
-                    .with_all_extensions()
-                    .version(Version::Native);
-                let sliding_sync = sliding_sync_builder.build().await.unwrap();
-                {
-                    *state.sliding.write().await = Some(sliding_sync.clone());
-                }
-                let mut stream = Box::pin(sliding_sync.sync());
-                while let Some(update) = stream.next().await {
-                    match update {
-                        Ok(summary) => {
-                            println!("SUMMARY ====> {summary:?}");
-
-                        }
-                        Err(e) => {
-                            println!("{}", e.to_string());
-                        }
-                    }
-                }
+                client.sync(SyncSettings::default()).await.unwrap();
 
                 println!("Sync stopped");
             });

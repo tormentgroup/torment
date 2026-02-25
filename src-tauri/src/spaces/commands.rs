@@ -1,34 +1,25 @@
 use futures_util::StreamExt;
+use futures_util::TryFutureExt;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 use matrix_sdk::ruma::events::AnyMessageLikeEventContent;
-use matrix_sdk_ui::timeline::Timeline;
+use matrix_sdk_ui::eyeball_im;
 use matrix_sdk_ui::timeline::TimelineBuilder;
 use matrix_sdk_ui::timeline::TimelineItem;
 use matrix_sdk_ui::timeline::TimelineItemContent;
 use matrix_sdk_ui::timeline::TimelineItemKind;
+use matrix_sdk_ui::Timeline;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tauri::Emitter;
 
-use matrix_sdk::deserialized_responses::TimelineEvent;
-
-use matrix_sdk::deserialized_responses::TimelineEventKind;
 use matrix_sdk::ruma::events::room::message::MessageType;
-use matrix_sdk::ruma::events::AnySyncTimelineEvent;
-use matrix_sdk::ruma::UInt;
 use matrix_sdk::{
-    room::{MessagesOptions, RoomMember},
-    ruma::{
-        events::{
-            room::member::MembershipState, space::child::SpaceChildEventContent,
-            AnySyncMessageLikeEvent,
-        },
-        OwnedRoomId, RoomId,
-    },
+    ruma::{events::space::child::SpaceChildEventContent, OwnedRoomId, RoomId},
     RoomMemberships, RoomState,
 };
 use serde::Serialize;
-use tauri::{ipc::IpcResponse, AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State};
 
 use super::graph::{collect_space_edges, SpaceGraph};
 use crate::AppData;
@@ -208,6 +199,7 @@ pub async fn get_members(
         })
         .collect())
 }
+
 #[derive(Debug, Clone, Serialize)]
 pub struct UiTimelineItem {
     pub event_id: Option<String>,
@@ -217,10 +209,41 @@ pub struct UiTimelineItem {
     pub body: String,
     pub formatted_html: Option<String>,
     pub edited: bool,
-
     pub reactions: BTreeMap<String, u32>,
+
+    pub is_redacted: bool, // NEW
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum UiRow {
+    Message(UiTimelineItem),
+    DateDivider { ts_ms: i64 },
+    TimelineStart,
+}
+pub fn to_ui_row(it: &Arc<TimelineItem>) -> Option<UiRow> {
+    match it.kind() {
+        TimelineItemKind::Virtual(v) => {
+            use matrix_sdk_ui::timeline::VirtualTimelineItem;
+
+            match v {
+                VirtualTimelineItem::DateDivider(ts) => {
+                    // ts is a MilliSecondsSinceUnixEpoch in many versions; adapt as needed
+                    let ts_ms: i64 = ts.0.into();
+                    Some(UiRow::DateDivider { ts_ms })
+                }
+                VirtualTimelineItem::TimelineStart => Some(UiRow::TimelineStart),
+                _ => None, // keep it future-proof for other virtual variants
+            }
+        }
+
+        TimelineItemKind::Event(_) => {
+            // reuse your existing converter for messages
+            let msg = to_ui_item_from_timeline(it)?;
+            Some(UiRow::Message(msg))
+        }
+    }
+}
 pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem> {
     let event = match it.kind() {
         TimelineItemKind::Event(ev) => ev,
@@ -231,6 +254,7 @@ pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem
     let ts_ms: i64 = event.timestamp().0.into();
     let event_id = event.event_id().map(|id| id.to_string());
 
+    // If it can't decrypt, still show placeholder.
     if event.content().is_unable_to_decrypt() {
         return Some(UiTimelineItem {
             event_id,
@@ -240,24 +264,11 @@ pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem
             formatted_html: None,
             edited: false,
             reactions: BTreeMap::new(),
+            is_redacted: false,
         });
     }
 
-    let msglike = match event.content() {
-        TimelineItemContent::MsgLike(msglike) => msglike,
-        _ => return None,
-    };
-
-    let message = msglike.as_message()?;
-
-    let body = message.body().to_owned();
-    let edited = message.is_edited();
-
-    let formatted_html = match message.msgtype() {
-        MessageType::Text(text) => text.formatted.as_ref().map(|f| f.body.clone()),
-        _ => None,
-    };
-
+    // Keep reactions regardless of content kind
     let mut reactions: BTreeMap<String, u32> = BTreeMap::new();
     if let Some(r) = event.content().reactions() {
         for (key, by_sender) in r.iter() {
@@ -265,23 +276,72 @@ pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem
         }
     }
 
+    // We only render message-like items; BUT if it was redacted, the SDK may no longer
+    // expose it as a message. In that case, return a placeholder instead of None.
+    let msglike = match event.content() {
+        TimelineItemContent::MsgLike(msglike) => msglike,
+        _ => {
+            // For now, ignore other event types.
+            return None;
+        }
+    };
+
+    if let Some(message) = msglike.as_message() {
+        let body = message.body().to_owned();
+        let edited = message.is_edited();
+        let formatted_html = match message.msgtype() {
+            MessageType::Text(text) => text.formatted.as_ref().map(|f| f.body.clone()),
+            _ => None,
+        };
+
+        return Some(UiTimelineItem {
+            event_id,
+            sender,
+            ts_ms,
+            body,
+            formatted_html,
+            edited,
+            reactions,
+            is_redacted: false,
+        });
+    }
+
+    // If it was message-like but no longer a message (common after redaction),
+    // emit a stable placeholder so the UI can update.
+    // TODO: Please one day verify what the AI overlord assumes
     Some(UiTimelineItem {
         event_id,
         sender,
         ts_ms,
-        body,
-        formatted_html,
-        edited,
+        body: "Message deleted".to_string(),
+        formatted_html: None,
+        edited: false,
         reactions,
+        is_redacted: true,
     })
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum UiTimelinePatch {
+    PushBack { row: UiRow },
+    PushFront { row: UiRow },
+    Insert { index: usize, row: UiRow },
+    Set { index: usize, row: UiRow },
+    Remove { index: usize },
+}
+
 #[tauri::command(rename_all = "snake_case")]
-pub async fn open_room(
-    app: tauri::AppHandle,
-    room_id: String,
-) -> Result<Vec<UiTimelineItem>, String> { // FIXME: add actual error types
+pub async fn open_room(app: tauri::AppHandle, room_id: String) -> Result<Vec<UiRow>, String> {
+    // FIXME: add actual error types
     let state: tauri::State<'_, AppData> = app.state();
+
+    {
+        let timeline_event_task = state.timeline_event_task.write().await;
+        if let Some(task) = &*timeline_event_task {
+            task.abort();
+        }
+    }
 
     let room_id: OwnedRoomId = RoomId::parse(room_id).map_err(|e| e.to_string())?;
 
@@ -298,8 +358,8 @@ pub async fn open_room(
     let (items_snapshot, mut diffs_stream) = timeline.subscribe().await;
     let mut items = items_snapshot;
 
-    let chunk: u16 = 100;
-    let hard_cap: u32 = 20_000; // TODO: need to stress test and find actual max
+    let chunk: u16 = 20u16;
+    let hard_cap: u32 = 20_000u32; // TODO: need to stress test and find actual max
     let mut total_requested: u32 = 0;
 
     loop {
@@ -342,15 +402,79 @@ pub async fn open_room(
         }
     }
 
-    let ui: Vec<UiTimelineItem> = items
-        .iter()
-        .rev()
-        .filter_map(to_ui_item_from_timeline)
-        .take(target_messages)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
+    {
+        let mut open_timeline = state.open_timeline.write().await;
+        *open_timeline = Some(timeline);
+    }
+    let app_handle = app.clone();
+    let room_id_str = room_id.to_string();
+
+    let task = tauri::async_runtime::spawn(async move {
+        while let Some(diffs) = diffs_stream.next().await {
+            let mut patches: Vec<UiTimelinePatch> = Vec::new();
+
+            for diff in diffs {
+                match diff {
+                    eyeball_im::VectorDiff::PushBack { value } => {
+                        if let Some(row) = to_ui_row(&value) {
+                            patches.push(UiTimelinePatch::PushBack { row });
+                        }
+                    }
+                    eyeball_im::VectorDiff::PushFront { value } => {
+                        if let Some(row) = to_ui_row(&value) {
+                            patches.push(UiTimelinePatch::PushFront { row });
+                        }
+                    }
+                    eyeball_im::VectorDiff::Insert { index, value } => {
+                        if let Some(row) = to_ui_row(&value) {
+                            patches.push(UiTimelinePatch::Insert { index, row });
+                        }
+                    }
+                    eyeball_im::VectorDiff::Set { index, value } => {
+                        if let Some(row) = to_ui_row(&value) {
+                            patches.push(UiTimelinePatch::Set { index, row });
+                        }
+                    }
+                    eyeball_im::VectorDiff::Remove { index } => {
+                        patches.push(UiTimelinePatch::Remove { index });
+                    }
+                    eyeball_im::VectorDiff::Append { .. } => {
+                        todo!()
+                    }
+                    eyeball_im::VectorDiff::Reset { .. } => {
+                        todo!()
+                    }
+                    eyeball_im::VectorDiff::Clear { .. } => {
+                        todo!()
+                    }
+                    eyeball_im::VectorDiff::PopBack { .. } => {
+                        todo!()
+                    }
+                    eyeball_im::VectorDiff::Truncate { .. } => {
+                        todo!()
+                    }
+                    eyeball_im::VectorDiff::PopFront { .. } => {
+                        todo!()
+                    }
+                }
+            }
+
+            if !patches.is_empty() {
+                let _ = app_handle.emit(
+                    "timeline-patch",
+                    serde_json::json!({
+                        "room_id": room_id_str,
+                        "patches": patches,
+                    }),
+                );
+            }
+        }
+    });
+    {
+        let mut timeline_event_task = state.timeline_event_task.write().await;
+        *timeline_event_task = Some(task);
+    }
+    let ui: Vec<UiRow> = items.iter().filter_map(to_ui_row).collect();
 
     Ok(ui)
 }
@@ -364,21 +488,47 @@ pub async fn send_message(
 ) -> Result<(), String> {
     let state: tauri::State<'_, AppData> = app.state();
 
-    let room_id: OwnedRoomId = RoomId::parse(room_id).map_err(|e| e.to_string())?;
+    let timeline = state.open_timeline.write().await;
+    if let Some(timeline) = &*timeline {
+        timeline
+            .send(AnyMessageLikeEventContent::RoomMessage(
+                RoomMessageEventContent::text_plain(message),
+            ))
+            .await
+            .unwrap();
+        Ok(())
+    } else {
+        Err("No timeline exists for the open room".to_string())
+    }
+}
 
-    let client = state.client.read().await.clone().ok_or("missing client")?;
-    let room = client.get_room(&room_id).ok_or("not in room")?;
-
-    let timeline = TimelineBuilder::new(&room)
-        .build()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    timeline
-        .send(AnyMessageLikeEventContent::RoomMessage(
-            RoomMessageEventContent::text_plain(message),
-        ))
-        .await
-        .unwrap();
-    Ok(())
+#[tauri::command(rename_all = "snake_case")]
+// FIXME: Add real error handling
+pub async fn paginate_up(app: tauri::AppHandle) -> Result<(), String> {
+    let state: State<'_, AppData> = app.state();
+    let timeline = state.open_timeline.write().await;
+    if let Some(timeline) = &*timeline {
+        let _at_start = timeline
+            .paginate_backwards(10)
+            .await
+            .map_err(|e| e.to_string())?; // TODO: possibly emit an event that we have reached the start/end of the timeline
+        Ok(())
+    } else {
+        Err("No open timeline found".to_string())
+    }
+}
+#[tauri::command(rename_all = "snake_case")]
+// FIXME: Add real error handling
+pub async fn paginate_down(app: tauri::AppHandle) -> Result<(), String> {
+    let state: State<'_, AppData> = app.state();
+    let timeline = state.open_timeline.write().await;
+    if let Some(timeline) = &*timeline {
+        let _at_start = timeline
+            .paginate_forwards(10)
+            .await
+            .map_err(|e| e.to_string())?; // TODO: possibly emit an event that we have reached the start/end of the timeline
+        Ok(())
+    } else {
+        Err("No open timeline found".to_string())
+    }
 }
