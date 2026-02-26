@@ -1,10 +1,12 @@
+use futures_util::StreamExt;
 pub mod commands;
 
 use std::sync::atomic::Ordering;
 
 use matrix_sdk::{
     authentication::matrix::MatrixSession, config::SyncSettings,
-    ruma::events::room::message::SyncRoomMessageEvent, Client, Room, SessionChange,
+    ruma::events::room::message::SyncRoomMessageEvent, sliding_sync::Version, Client, Room,
+    SessionChange,
 };
 use tauri::{async_runtime::block_on, AppHandle, Emitter, Manager, State};
 use tauri_plugin_store::StoreExt;
@@ -71,15 +73,15 @@ pub async fn finish_login(app_handle: AppHandle) {
             .await
             .unwrap(); // FIXME: Propper errors
 
-        new_client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
-            // TODO: put the handler logic in its own rust module
-            println!(
-                "Received a message {:?} ============== Room {:?} - {:?}",
-                ev,
-                room.room_id(),
-                room.room_type()
-            );
-        });
+        //new_client.add_event_handler(|ev: SyncRoomMessageEvent, room: Room| async move {
+        //    // TODO: put the handler logic in its own rust module
+        //    println!(
+        //        "Received a message {:?} ============== Room {:?} - {:?}",
+        //        ev,
+        //        room.room_id(),
+        //        room.room_type()
+        //    );
+        //});
 
         // Persist refreshed session tokens back to auth store so they survive restarts
         let mut session_rx = new_client.subscribe_to_session_changes();
@@ -171,26 +173,21 @@ pub async fn finish_login(app_handle: AppHandle) {
                             .await
                             .expect("failed to restore session on rebuilt client");
 
-                        new_client.add_event_handler(
-                            |ev: SyncRoomMessageEvent, room: Room| async move {
-                                println!(
-                                    "Received a message {:?} ============== Room {:?} - {:?}",
-                                    ev,
-                                    room.room_id(),
-                                    room.room_type()
-                                );
-                            },
-                        );
+                        //new_client.add_event_handler(
+                        //    |ev: SyncRoomMessageEvent, room: Room| async move {
+                        //        println!(
+                        //            "Received a message {:?} ============== Room {:?} - {:?}",
+                        //            ev,
+                        //            room.room_id(),
+                        //            room.room_type()
+                        //        );
+                        //    },
+                        //);
 
                         // Update shared state so the rest of the app uses the new client
                         {
                             *state.client.write().await = Some(new_client.clone());
                         }
-
-                        new_client
-                            .sync_once(SyncSettings::default())
-                            .await
-                            .expect("sync_once failed after store rebuild");
 
                         new_client
                     }
@@ -200,8 +197,8 @@ pub async fn finish_login(app_handle: AppHandle) {
                 app_handle.emit("sync-ready", {}).unwrap();
                 state.has_synced.store(true, Ordering::Relaxed); // TODO: verify if this state will ever need to be set back tto false
 
-                // Now start the endless sync loop
                 client.sync(SyncSettings::default()).await.unwrap();
+
                 println!("Sync stopped");
             });
         } else {

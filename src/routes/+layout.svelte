@@ -23,7 +23,7 @@
 		} catch (e: any) {
 			if (e.InvalidState == 'Complete') {
 				if (page.url.pathname == '/auth/login') {
-					await goto('/');
+					await goto('/spaces');
 				}
 			} else {
 				// FIXME: handle case where we are currently in progress but not in login page because login may fail
@@ -73,6 +73,14 @@
 
 {#if !authPending && !syncPending}
 	{@render children?.()}
+{:else if authPending}
+	<span class="flex gap-[.5rem] items-center">
+		Authenticating <Spinner />
+	</span>
+{:else if syncPending}
+	<span class="flex gap-[.5rem] items-center">
+		Syncing <Spinner />
+	</span>
 {:else}
 	<Spinner />
 {/if}

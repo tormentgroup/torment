@@ -3,13 +3,16 @@ pub mod auth;
 pub mod spaces;
 pub mod types;
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use matrix_sdk::ruma::{events::room::MediaSource, OwnedMxcUri};
+use matrix_sdk::ruma::{events::room::MediaSource, MxcUri, OwnedEventId, OwnedMxcUri, OwnedRoomId};
+use matrix_sdk::SlidingSync;
 use matrix_sdk::{
     media::{MediaFormat, MediaRequestParameters},
     Client,
 };
+use matrix_sdk_ui::Timeline;
 use serde_json::json;
 use tauri::{async_runtime::RwLock, AppHandle, Emitter, Manager, State};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -20,6 +23,14 @@ use crate::{
     types::auth::{error::AuthError, AuthState},
 };
 
+pub struct TimelineWindow {
+    pub room_id: OwnedRoomId,
+
+    pub events: VecDeque<OwnedEventId>,
+    pub top_token: Option<String>,
+    pub bottom_token: Option<String>,
+}
+
 pub struct AppData {
     /// Client needs to be in an Option because it does not get initialized until the user logs in,
     /// and may specify the homeserver_url which means we can't statically get the client at
@@ -27,6 +38,9 @@ pub struct AppData {
     client: RwLock<Option<Client>>,
     state: RwLock<AuthState>,
     has_synced: AtomicBool,
+
+    open_timeline: RwLock<Option<Timeline>>,
+    timeline_event_task: RwLock<Option<tauri::async_runtime::JoinHandle<()>>>
 }
 
 #[tauri::command]
@@ -48,17 +62,13 @@ pub fn run() {
             client: RwLock::new(None),
             state: RwLock::new(AuthState::NotStarted),
             has_synced: AtomicBool::new(false),
+            open_timeline: RwLock::new(None),
+            timeline_event_task: RwLock::new(None),
         })
         .register_asynchronous_uri_scheme_protocol("mxc", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {
-                let uri = request.uri();
-                // Reconstruct mxc:// URI from the request URL
-                // Tauri gives us: mxc://localhost/server_name/media_id
-                // We need: mxc://server_name/media_id
-                let path = uri.path();
-                let host = uri.host().unwrap_or_default();
-                let mxc_uri: OwnedMxcUri = format!("mxc://{}{}", host, path).into();
+                let mxc: OwnedMxcUri = request.uri().to_string().into();
 
                 let state: State<'_, AppData> = app.state();
                 let client = state.client.read().await;
@@ -73,7 +83,7 @@ pub fn run() {
                 };
 
                 let request = MediaRequestParameters {
-                    source: MediaSource::Plain(mxc_uri),
+                    source: MediaSource::Plain(mxc),
                     format: MediaFormat::File,
                 };
 
@@ -165,6 +175,11 @@ pub fn run() {
             spaces::commands::get_rooms,
             spaces::commands::get_spaces,
             spaces::commands::get_members,
+            spaces::commands::open_room,
+            spaces::commands::send_message,
+
+            spaces::commands::paginate_up,
+            spaces::commands::paginate_down,
             has_synced,
         ])
         .run(tauri::generate_context!())
