@@ -9,8 +9,6 @@
 	let users: User[] = $state([]);
 	let pending = $state(true);
 
-	let scroller: any;
-
 	let taskid = 0;
 	$effect(() => {
 		(async () => {
@@ -55,7 +53,6 @@
 <div class="layout">
 	<div class="chat">
 		<Timeline
-			bind:this={scroller}
 			{roomId}
 			{users}
 		/>

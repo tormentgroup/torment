@@ -1,4 +1,6 @@
 export type Message = {
+    kind: string;
+    key: string;
     event_id: string;
     sender: string;
     ts_ms: number;

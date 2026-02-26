@@ -202,6 +202,7 @@ pub async fn get_members(
 
 #[derive(Debug, Clone, Serialize)]
 pub struct UiTimelineItem {
+    pub key: String,
     pub event_id: Option<String>,
     pub sender: String,
     pub ts_ms: i64,
@@ -217,11 +218,23 @@ pub struct UiTimelineItem {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum UiRow {
-    Message(UiTimelineItem),
-    DateDivider { ts_ms: i64 },
-    TimelineStart,
+    Message {
+        key: String,
+        message: UiTimelineItem,
+    },
+    DateDivider {
+        key: String,
+        ts_ms: i64,
+    },
+    TimelineStart {
+        key: String,
+    },
+    Other {
+        key: String,
+    },
 }
-pub fn to_ui_row(it: &Arc<TimelineItem>) -> Option<UiRow> {
+pub fn to_ui_row(it: &Arc<TimelineItem>) -> UiRow {
+    let key = it.unique_id().0.clone();
     match it.kind() {
         TimelineItemKind::Virtual(v) => {
             use matrix_sdk_ui::timeline::VirtualTimelineItem;
@@ -230,17 +243,20 @@ pub fn to_ui_row(it: &Arc<TimelineItem>) -> Option<UiRow> {
                 VirtualTimelineItem::DateDivider(ts) => {
                     // ts is a MilliSecondsSinceUnixEpoch in many versions; adapt as needed
                     let ts_ms: i64 = ts.0.into();
-                    Some(UiRow::DateDivider { ts_ms })
+                    UiRow::DateDivider { key, ts_ms }
                 }
-                VirtualTimelineItem::TimelineStart => Some(UiRow::TimelineStart),
-                _ => None, // keep it future-proof for other virtual variants
+                VirtualTimelineItem::TimelineStart => UiRow::TimelineStart { key },
+                _ => UiRow::Other { key }, // keep it future-proof for other virtual variants
             }
         }
 
         TimelineItemKind::Event(_) => {
             // reuse your existing converter for messages
-            let msg = to_ui_item_from_timeline(it)?;
-            Some(UiRow::Message(msg))
+            if let Some(msg) = to_ui_item_from_timeline(it) {
+                UiRow::Message { message: msg, key }
+            } else {
+                UiRow::Other { key }
+            }
         }
     }
 }
@@ -253,10 +269,11 @@ pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem
     let sender = event.sender().to_string();
     let ts_ms: i64 = event.timestamp().0.into();
     let event_id = event.event_id().map(|id| id.to_string());
-
+    let key = it.unique_id().0.clone();
     // If it can't decrypt, still show placeholder.
     if event.content().is_unable_to_decrypt() {
         return Some(UiTimelineItem {
+            key,
             event_id,
             sender,
             ts_ms,
@@ -295,6 +312,7 @@ pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem
         };
 
         return Some(UiTimelineItem {
+            key,
             event_id,
             sender,
             ts_ms,
@@ -310,6 +328,7 @@ pub fn to_ui_item_from_timeline(it: &Arc<TimelineItem>) -> Option<UiTimelineItem
     // emit a stable placeholder so the UI can update.
     // TODO: Please one day verify what the AI overlord assumes
     Some(UiTimelineItem {
+        key,
         event_id,
         sender,
         ts_ms,
@@ -416,24 +435,20 @@ pub async fn open_room(app: tauri::AppHandle, room_id: String) -> Result<Vec<UiR
             for diff in diffs {
                 match diff {
                     eyeball_im::VectorDiff::PushBack { value } => {
-                        if let Some(row) = to_ui_row(&value) {
-                            patches.push(UiTimelinePatch::PushBack { row });
-                        }
+                        let row = to_ui_row(&value);
+                        patches.push(UiTimelinePatch::PushBack { row });
                     }
                     eyeball_im::VectorDiff::PushFront { value } => {
-                        if let Some(row) = to_ui_row(&value) {
-                            patches.push(UiTimelinePatch::PushFront { row });
-                        }
+                        let row = to_ui_row(&value);
+                        patches.push(UiTimelinePatch::PushFront { row });
                     }
                     eyeball_im::VectorDiff::Insert { index, value } => {
-                        if let Some(row) = to_ui_row(&value) {
-                            patches.push(UiTimelinePatch::Insert { index, row });
-                        }
+                        let row = to_ui_row(&value);
+                        patches.push(UiTimelinePatch::Insert { index, row });
                     }
                     eyeball_im::VectorDiff::Set { index, value } => {
-                        if let Some(row) = to_ui_row(&value) {
-                            patches.push(UiTimelinePatch::Set { index, row });
-                        }
+                        let row = to_ui_row(&value);
+                        patches.push(UiTimelinePatch::Set { index, row });
                     }
                     eyeball_im::VectorDiff::Remove { index } => {
                         patches.push(UiTimelinePatch::Remove { index });
@@ -474,7 +489,7 @@ pub async fn open_room(app: tauri::AppHandle, room_id: String) -> Result<Vec<UiR
         let mut timeline_event_task = state.timeline_event_task.write().await;
         *timeline_event_task = Some(task);
     }
-    let ui: Vec<UiRow> = items.iter().filter_map(to_ui_row).collect();
+    let ui: Vec<UiRow> = items.iter().map(to_ui_row).collect();
 
     Ok(ui)
 }
