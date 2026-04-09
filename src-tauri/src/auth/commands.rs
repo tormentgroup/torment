@@ -40,11 +40,11 @@ pub async fn login(app: AppHandle, homeserver_url: String) -> Result<String, Aut
     // TODO: REMOVE THIS
     let store = app.store(DBG_AUTHPATH).unwrap();
     if let Some(auth) = store.get("auth") {
-        eprintln!("Loading auth from file");
+        eprintln!("Loading auth from file {auth:?}");
         let session: MatrixSession = serde_json::from_value(auth).unwrap();
         client
             .matrix_auth()
-            .restore_session(session, RoomLoadSettings::default())
+            .restore_session(session, RoomLoadSettings::All)
             .await?;
         {
             *(state.client.write().await) = Some(client);
