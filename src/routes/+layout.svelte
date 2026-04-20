@@ -21,9 +21,10 @@
 			}
 			// FIXME: Need to check state. If we are now logged in, we can continue, otherwise we send user to login screen
 		} catch (e: any) {
+			console.error(e);
 			if (e.InvalidState == 'Complete') {
 				if (page.url.pathname == '/auth/login') {
-					await goto('/');
+					await goto('/spaces');
 				}
 			} else {
 				// FIXME: handle case where we are currently in progress but not in login page because login may fail
@@ -31,7 +32,7 @@
 				if (page.url.pathname == '/auth/login') {
 					return;
 				}
-				console.log(e);
+				console.error(e);
 				await goto('/auth/login');
 			}
 		} finally {
@@ -73,6 +74,14 @@
 
 {#if !authPending && !syncPending}
 	{@render children?.()}
+{:else if authPending}
+	<span class="flex items-center gap-[.5rem]">
+		Authenticating <Spinner />
+	</span>
+{:else if syncPending}
+	<span class="flex items-center gap-[.5rem]">
+		Syncing <Spinner />
+	</span>
 {:else}
 	<Spinner />
 {/if}
